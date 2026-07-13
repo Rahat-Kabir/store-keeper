@@ -1,3 +1,4 @@
+import { getApprovalActionHeadline } from '../ticketPresentation'
 import type {
   ApprovalPayload,
   ShippingAddress,
@@ -30,61 +31,34 @@ export function ApprovalCard({
 
   return (
     <section className="content-card approval-card" aria-labelledby="approval-heading">
-      <div className="approval-card-heading">
-        <div>
-          <span className="eyebrow">Operator decision required</span>
-          <h2 id="approval-heading">Review this Shopify action</h2>
-        </div>
-        <span className="approval-paused-label">Workflow paused</span>
-      </div>
+      <span className="eyebrow approval-eyebrow">Awaiting your approval</span>
+      <h2 id="approval-heading">{getApprovalActionHeadline(approval)}</h2>
 
-      <p className="approval-question">{approval.question}</p>
-
-      <div className="order-binding" aria-label="Order reference verification">
+      <dl className="approval-facts-grid">
         <div>
-          <span>Customer wrote</span>
-          <strong>{approval.requested_reference ?? 'No reference provided'}</strong>
+          <dt>Customer wrote</dt>
+          <dd className="monospace-value">
+            {approval.requested_reference ?? 'No reference provided'}
+          </dd>
         </div>
-        <span className="binding-arrow" aria-hidden="true">→</span>
         <div>
-          <span>Resolved Shopify order</span>
-          <strong>{approval.order}</strong>
+          <dt>Matched order</dt>
+          <dd className="matched-order-value">
+            <span className="monospace-value">{approval.order}</span>
+            {approval.requested_reference === approval.order ? (
+              <span className="exact-match">✓ exact match</span>
+            ) : null}
+          </dd>
         </div>
-      </div>
-
-      <dl className="approval-detail-grid">
         <div>
           <dt>Requested action</dt>
           <dd>{ACTION_LABELS[approval.action]}</dd>
         </div>
         <div>
-          <dt>Order amount</dt>
-          <dd>{approval.amount}</dd>
-        </div>
-        <div>
-          <dt>Gate rule</dt>
-          <dd className="monospace-value">{approval.gate_rule}</dd>
-        </div>
-        <div>
-          <dt>Safety flags</dt>
-          <dd>
-            {approval.flags.length > 0 ? (
-              <span className="flag-list">
-                {approval.flags.map((flag) => (
-                  <span className="safety-flag" key={flag}>{flag}</span>
-                ))}
-              </span>
-            ) : (
-              'None'
-            )}
-          </dd>
+          <dt>Amount</dt>
+          <dd className="amount-value">{approval.amount}</dd>
         </div>
       </dl>
-
-      <div className="gate-reason">
-        <span>Why the gate passed</span>
-        <p>{approval.gate_reason}</p>
-      </div>
 
       {approval.current_shipping_address || approval.new_shipping_address ? (
         <div className="address-comparison">
@@ -100,6 +74,23 @@ export function ApprovalCard({
         </div>
       ) : null}
 
+      {approval.flags.length > 0 ? (
+        <div className="flag-list approval-flag-list">
+          {approval.flags.map((flag) => (
+            <span className="safety-flag" key={flag}>{flag}</span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="gate-status-strip gate-status-passed">
+        <div>
+          <strong>✓ Gate passed</strong>
+          <span aria-hidden="true"> — </span>
+          <code>{approval.gate_rule}</code>
+        </div>
+        <p>{approval.gate_reason}</p>
+      </div>
+
       {errorMessage ? (
         <div className="decision-error" role="alert">
           <p>{errorMessage}</p>
@@ -110,16 +101,7 @@ export function ApprovalCard({
       ) : null}
 
       <div className="decision-footer">
-        <p>Approving runs this Shopify write immediately.</p>
         <div className="decision-actions">
-          <button
-            className="secondary-button reject-button"
-            type="button"
-            disabled={isSubmittingDecision}
-            onClick={() => onDecide('reject')}
-          >
-            {activeDecision === 'reject' ? 'Rejecting…' : 'Reject action'}
-          </button>
           <button
             className="primary-button approve-button"
             type="button"
@@ -128,7 +110,19 @@ export function ApprovalCard({
           >
             {activeDecision === 'approve' ? 'Executing…' : approveButtonLabel}
           </button>
+          <button
+            className="secondary-button reject-button"
+            type="button"
+            disabled={isSubmittingDecision}
+            onClick={() => onDecide('reject')}
+          >
+            {activeDecision === 'reject' ? 'Rejecting…' : 'Reject'}
+          </button>
         </div>
+        <p>
+          Approving executes a real write on your Shopify store. Rejecting makes no
+          changes.
+        </p>
       </div>
     </section>
   )

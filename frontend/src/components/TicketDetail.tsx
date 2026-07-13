@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { ApiRequestError } from '../api'
 import {
   formatRelativeTime,
+  getApprovalActionHeadline,
+  getHistoryStatusText,
   getTicketPresentation,
   getTicketResultMessage,
 } from '../ticketPresentation'
@@ -68,6 +70,9 @@ export function TicketDetail({
 
   const presentation = getTicketPresentation(ticket, ticket)
   const resultMessage = getTicketResultMessage(ticket)
+  const deniedGateVerdict = ticket.task_results.find(
+    (result) => result.outcome === 'denied_by_policy',
+  )?.gate_verdict
   const policyCitations = Array.from(
     new Set(ticket.task_results.flatMap((result) => result.policy_citations)),
   )
@@ -97,10 +102,24 @@ export function TicketDetail({
     <article className="ticket-detail">
       <header className="detail-heading">
         <div className="ticket-title-row">
-          <h1>{ticket.ticket_id}</h1>
-          <StatusBadge label={presentation.label} tone={presentation.tone} />
+          <h1>
+            {ticket.pending_approval
+              ? getApprovalActionHeadline(ticket.pending_approval)
+              : 'Ticket'}
+          </h1>
+          {ticket.status === 'pending_approval' ? (
+            <StatusBadge label="Pending" tone="attention" />
+          ) : (
+            <span className={`detail-status detail-status-${presentation.tone}`}>
+              {getHistoryStatusText(presentation)}
+            </span>
+          )}
         </div>
-        <p>Received {formatRelativeTime(ticket.created_at)}</p>
+        <p className="detail-meta">
+          <span>{ticket.ticket_id}</span>
+          <span aria-hidden="true">·</span>
+          <span>received {formatRelativeTime(ticket.created_at)}</span>
+        </p>
       </header>
 
       <section className="content-card customer-message-card">
@@ -108,9 +127,20 @@ export function TicketDetail({
         <p>{ticket.ticket_text}</p>
       </section>
 
-      {resultMessage ? (
+      {ticket.status !== 'pending_approval' && resultMessage ? (
         <div className={`result-banner result-banner-${presentation.tone}`}>
           {resultMessage}
+        </div>
+      ) : null}
+
+      {deniedGateVerdict ? (
+        <div className="gate-status-strip gate-status-denied">
+          <div>
+            <strong>✕ Gate denied</strong>
+            <span aria-hidden="true"> — </span>
+            <code>{deniedGateVerdict.rule}</code>
+          </div>
+          <p>{deniedGateVerdict.reason}</p>
         </div>
       ) : null}
 
@@ -139,12 +169,11 @@ export function TicketDetail({
           <div className="reply-copy">{ticket.reply_draft}</div>
           {policyCitations.length > 0 ? (
             <div className="citation-list">
-              <span>Verified sources</span>
-              <ul>
-                {policyCitations.map((citation) => (
-                  <li key={citation}>{citation}</li>
-                ))}
-              </ul>
+              {policyCitations.map((citation) => (
+                <span className="citation-chip" key={citation}>
+                  <span aria-hidden="true">📄</span> {citation}
+                </span>
+              ))}
             </div>
           ) : null}
           <p className="draft-notice">

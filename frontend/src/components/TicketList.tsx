@@ -1,13 +1,18 @@
+import { useMemo, useState } from 'react'
 import {
   formatRelativeTime,
+  getApprovalActionHeadline,
+  getHistoryStatusText,
   getTicketPresentation,
 } from '../ticketPresentation'
 import type { TicketDetailResponse, TicketSummary } from '../types'
 import { StatusBadge } from './StatusBadge'
 
+const INITIAL_HISTORY_COUNT = 15
+
 interface TicketListProps {
   tickets: TicketSummary[]
-  selectedTicket: TicketDetailResponse | null
+  ticketDetailsById: Record<string, TicketDetailResponse>
   selectedTicketId: string | null
   isCreatingTicket: boolean
   isLoading: boolean
@@ -19,7 +24,7 @@ interface TicketListProps {
 
 export function TicketList({
   tickets,
-  selectedTicket,
+  ticketDetailsById,
   selectedTicketId,
   isCreatingTicket,
   isLoading,
@@ -28,15 +33,20 @@ export function TicketList({
   onSelectTicket,
   onRetry,
 }: TicketListProps) {
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(INITIAL_HISTORY_COUNT)
+  const pendingTickets = useMemo(
+    () => tickets.filter((ticket) => ticket.status === 'pending_approval'),
+    [tickets],
+  )
+  const historyTickets = useMemo(
+    () => tickets.filter((ticket) => ticket.status !== 'pending_approval'),
+    [tickets],
+  )
+  const visibleHistoryTickets = historyTickets.slice(0, visibleHistoryCount)
+  const olderHistoryCount = Math.max(historyTickets.length - visibleHistoryCount, 0)
+
   return (
     <aside className="ticket-sidebar" aria-label="Tickets">
-      <div className="ticket-list-header">
-        <h1 className="section-label">Tickets</h1>
-        <button className="secondary-button" type="button" onClick={onCreateTicket}>
-          <span aria-hidden="true">+</span> New ticket
-        </button>
-      </div>
-
       {errorMessage ? (
         <div className="sidebar-message error-message" role="alert">
           <p>{errorMessage}</p>
@@ -55,31 +65,105 @@ export function TicketList({
         </div>
       ) : null}
 
-      <div className="ticket-list">
-        {tickets.map((ticket) => {
-          const isSelected = !isCreatingTicket && ticket.ticket_id === selectedTicketId
-          const selectedDetail =
-            selectedTicket?.ticket_id === ticket.ticket_id ? selectedTicket : null
-          const presentation = getTicketPresentation(ticket, selectedDetail)
-
-          return (
+      {!isLoading && !errorMessage ? (
+        <>
+          <div className="ticket-zone-heading">
+            <h1 className="section-label">
+              Needs your approval ({pendingTickets.length})
+            </h1>
             <button
-              className={`ticket-list-item${isSelected ? ' selected' : ''}`}
+              className="primary-button new-ticket-button"
               type="button"
-              key={ticket.ticket_id}
-              onClick={() => onSelectTicket(ticket.ticket_id)}
-              aria-current={isSelected ? 'true' : undefined}
+              onClick={onCreateTicket}
             >
-              <span className="ticket-list-meta">
-                <span className="ticket-id">{ticket.ticket_id}</span>
-                <StatusBadge label={presentation.label} tone={presentation.tone} />
-              </span>
-              <span className="ticket-preview">{ticket.ticket_text}</span>
-              <span className="ticket-time">{formatRelativeTime(ticket.created_at)}</span>
+              <span aria-hidden="true">+</span> New ticket
             </button>
-          )
-        })}
-      </div>
+          </div>
+
+          {pendingTickets.length === 0 ? (
+            <div className="approval-empty-state">
+              ✓ All caught up — nothing needs your approval.
+            </div>
+          ) : (
+            <div className="pending-ticket-list">
+              {pendingTickets.map((ticket) => {
+                const ticketDetail = ticketDetailsById[ticket.ticket_id]
+                const approval = ticketDetail?.pending_approval
+                const isSelected =
+                  !isCreatingTicket && ticket.ticket_id === selectedTicketId
+
+                return (
+                  <button
+                    className={`pending-ticket-card${isSelected ? ' selected' : ''}`}
+                    type="button"
+                    key={ticket.ticket_id}
+                    onClick={() => onSelectTicket(ticket.ticket_id)}
+                    aria-current={isSelected ? 'true' : undefined}
+                  >
+                    <span className="pending-ticket-title-row">
+                      <strong>
+                        {approval
+                          ? getApprovalActionHeadline(approval)
+                          : 'Approval required'}
+                      </strong>
+                      <StatusBadge label="Pending" tone="attention" />
+                    </span>
+                    <span className="pending-ticket-preview">{ticket.ticket_text}</span>
+                    <span className="pending-ticket-facts">
+                      {approval ? (
+                        <span className="amount-value">{approval.amount}</span>
+                      ) : null}
+                      <span>{formatRelativeTime(ticket.created_at)}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          <h2 className="section-label history-heading">History</h2>
+          <div className="history-ticket-list">
+            {visibleHistoryTickets.map((ticket) => {
+              const isSelected =
+                !isCreatingTicket && ticket.ticket_id === selectedTicketId
+              const ticketDetail = ticketDetailsById[ticket.ticket_id]
+              const presentation = getTicketPresentation(ticket, ticketDetail)
+
+              return (
+                <button
+                  className={`history-ticket-row${isSelected ? ' selected' : ''}`}
+                  type="button"
+                  key={ticket.ticket_id}
+                  onClick={() => onSelectTicket(ticket.ticket_id)}
+                  aria-current={isSelected ? 'true' : undefined}
+                >
+                  <span className="history-ticket-primary">
+                    <span className="history-ticket-preview">{ticket.ticket_text}</span>
+                    <span className="history-ticket-time">
+                      {formatRelativeTime(ticket.created_at)}
+                    </span>
+                  </span>
+                  <span className="history-ticket-secondary">
+                    <span className={`history-status history-status-${presentation.tone}`}>
+                      {getHistoryStatusText(presentation)}
+                    </span>
+                    <span className="history-ticket-id">{ticket.ticket_id}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          {olderHistoryCount > 0 ? (
+            <button
+              className="secondary-button load-more-button"
+              type="button"
+              onClick={() => setVisibleHistoryCount(historyTickets.length)}
+            >
+              Load more ({olderHistoryCount} older)
+            </button>
+          ) : null}
+        </>
+      ) : null}
     </aside>
   )
 }

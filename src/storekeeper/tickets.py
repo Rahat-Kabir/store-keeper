@@ -29,21 +29,26 @@ class DuplicateTicketError(ValueError):
 
 
 _ticket_id_lock = threading.Lock()
-_last_ticket_id_timestamp_nanoseconds = 0
+_last_ticket_id_timestamp_seconds = 0
 
 
 def generate_ticket_id() -> str:
     """Return a timestamp-based id that stays unique within this process."""
-    global _last_ticket_id_timestamp_nanoseconds
+    global _last_ticket_id_timestamp_seconds
 
     with _ticket_id_lock:
-        current_timestamp_nanoseconds = time.time_ns()
-        unique_timestamp_nanoseconds = max(
-            current_timestamp_nanoseconds,
-            _last_ticket_id_timestamp_nanoseconds + 1,
+        current_timestamp_seconds = int(time.time())
+        unique_timestamp_seconds = max(
+            current_timestamp_seconds,
+            _last_ticket_id_timestamp_seconds + 1,
         )
-        _last_ticket_id_timestamp_nanoseconds = unique_timestamp_nanoseconds
-    return f"TICKET-{unique_timestamp_nanoseconds}"
+        _last_ticket_id_timestamp_seconds = unique_timestamp_seconds
+
+    readable_timestamp = datetime.fromtimestamp(
+        unique_timestamp_seconds,
+        timezone.utc,
+    ).strftime("%Y%m%d-%H%M%S")
+    return f"TICKET-{readable_timestamp}"
 
 
 def create_ticket(

@@ -10,6 +10,9 @@ function App() {
   const [tickets, setTickets] = useState<TicketSummary[]>([])
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
   const [selectedTicket, setSelectedTicket] = useState<TicketDetailResponse | null>(null)
+  const [ticketDetailsById, setTicketDetailsById] = useState<
+    Record<string, TicketDetailResponse>
+  >({})
   const [isCreatingTicket, setIsCreatingTicket] = useState(false)
   const [isLoadingTickets, setIsLoadingTickets] = useState(true)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
@@ -22,6 +25,18 @@ function App() {
     try {
       const latestTickets = await listTickets()
       setTickets(latestTickets)
+      const detailResults = await Promise.allSettled(
+        latestTickets.map((ticket) => getTicket(ticket.ticket_id)),
+      )
+      setTicketDetailsById((currentDetails) => {
+        const nextDetails = { ...currentDetails }
+        detailResults.forEach((detailResult) => {
+          if (detailResult.status === 'fulfilled') {
+            nextDetails[detailResult.value.ticket_id] = detailResult.value
+          }
+        })
+        return nextDetails
+      })
       setSelectedTicketId((currentTicketId) => {
         if (preferredTicketId) {
           return preferredTicketId
@@ -58,6 +73,10 @@ function App() {
       .then((ticketDetail) => {
         if (shouldUseResponse) {
           setSelectedTicket(ticketDetail)
+          setTicketDetailsById((currentDetails) => ({
+            ...currentDetails,
+            [ticketDetail.ticket_id]: ticketDetail,
+          }))
         }
       })
       .catch((error) => {
@@ -85,6 +104,10 @@ function App() {
   const handleCreateTicket = async (ticketText: string) => {
     const createdTicket = await createTicket(ticketText)
     setSelectedTicket(createdTicket)
+    setTicketDetailsById((currentDetails) => ({
+      ...currentDetails,
+      [createdTicket.ticket_id]: createdTicket,
+    }))
     setSelectedTicketId(createdTicket.ticket_id)
     setIsCreatingTicket(false)
     await refreshTickets(createdTicket.ticket_id)
@@ -97,6 +120,10 @@ function App() {
 
     const decidedTicket = await decideTicket(selectedTicketId, decision)
     setSelectedTicket(decidedTicket)
+    setTicketDetailsById((currentDetails) => ({
+      ...currentDetails,
+      [decidedTicket.ticket_id]: decidedTicket,
+    }))
     await refreshTickets(decidedTicket.ticket_id)
   }
 
@@ -114,9 +141,13 @@ function App() {
         </div>
         <div className="header-status">
           <span className="store-label">Local Shopify store</span>
-          <span className="approval-summary">
+          <span
+            className={`approval-summary${
+              pendingApprovalCount === 0 ? ' approval-summary-clear' : ''
+            }`}
+          >
             {pendingApprovalCount === 0
-              ? 'Nothing awaiting approval'
+              ? 'All caught up'
               : `${pendingApprovalCount} awaiting approval`}
           </span>
         </div>
@@ -125,7 +156,7 @@ function App() {
       <div className="console-layout">
         <TicketList
           tickets={tickets}
-          selectedTicket={selectedTicket}
+          ticketDetailsById={ticketDetailsById}
           selectedTicketId={selectedTicketId}
           isCreatingTicket={isCreatingTicket}
           isLoading={isLoadingTickets}

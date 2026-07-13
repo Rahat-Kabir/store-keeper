@@ -1,7 +1,9 @@
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from storekeeper.tickets import (
     DuplicateTicketError,
@@ -81,11 +83,30 @@ class TicketRegistryTests(unittest.TestCase):
         self.assertIsNone(missing_ticket)
 
     def test_generated_ticket_ids_are_unique(self) -> None:
-        generated_ticket_ids = {generate_ticket_id() for _ in range(100)}
+        fixed_timestamp = datetime(
+            2026,
+            7,
+            14,
+            8,
+            30,
+            tzinfo=timezone.utc,
+        ).timestamp()
+        with (
+            patch("storekeeper.tickets.time.time", return_value=fixed_timestamp),
+            patch(
+                "storekeeper.tickets._last_ticket_id_timestamp_seconds",
+                int(fixed_timestamp) - 1,
+            ),
+        ):
+            generated_ticket_ids = [generate_ticket_id() for _ in range(3)]
 
-        self.assertEqual(len(generated_ticket_ids), 100)
-        self.assertTrue(
-            all(ticket_id.startswith("TICKET-") for ticket_id in generated_ticket_ids)
+        self.assertEqual(
+            generated_ticket_ids,
+            [
+                "TICKET-20260714-083000",
+                "TICKET-20260714-083001",
+                "TICKET-20260714-083002",
+            ],
         )
 
 

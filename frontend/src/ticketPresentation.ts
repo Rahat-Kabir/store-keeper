@@ -1,4 +1,4 @@
-import type { TicketDetailResponse, TicketSummary } from './types'
+import type { ApprovalPayload, TicketDetailResponse, TicketSummary } from './types'
 
 export type StatusTone = 'neutral' | 'success' | 'danger' | 'attention'
 
@@ -51,10 +51,7 @@ export function getTicketResultMessage(ticket: TicketDetailResponse): string | n
     return 'You rejected this action. No changes were made to the order.'
   }
   if (taskOutcomes.includes('denied_by_policy')) {
-    const deniedResult = ticket.task_results.find(
-      (result) => result.outcome === 'denied_by_policy',
-    )
-    return deniedResult?.gate_verdict?.reason ?? 'The request was denied by policy.'
+    return 'The request was denied by store policy. No Shopify write was attempted.'
   }
   if (taskOutcomes.includes('failed')) {
     return 'The requested action could not be completed and needs manual follow-up.'
@@ -66,6 +63,26 @@ export function getTicketResultMessage(ticket: TicketDetailResponse): string | n
     return 'The policy question was answered from the verified sources below.'
   }
   return null
+}
+
+export function getApprovalActionHeadline(approval: ApprovalPayload): string {
+  if (approval.action === 'cancel_order') {
+    return `Cancel order ${approval.order}`
+  }
+  if (approval.action === 'issue_refund') {
+    return `Refund order ${approval.order}`
+  }
+  return `Change address on ${approval.order}`
+}
+
+export function getHistoryStatusText(presentation: TicketPresentation): string {
+  if (presentation.label === 'Executed' || presentation.label === 'Answered') {
+    return `✓ ${presentation.label}`
+  }
+  if (presentation.label === 'Denied by policy') {
+    return `✕ ${presentation.label}`
+  }
+  return presentation.label
 }
 
 export function formatRelativeTime(dateValue: string): string {
