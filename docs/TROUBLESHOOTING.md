@@ -4,6 +4,28 @@ Problems we hit and how we fixed them. Newest first. Format: symptom â†’ cause â
 
 ---
 
+## PowerShell curl request reached FastAPI with invalid JSON (2026-07-13)
+
+**Symptom:** A JSON-looking `curl.exe -d` command returned 422 with
+`json_invalid` and "Expecting property name enclosed in double quotes."
+
+**Cause:** PowerShell's native-command argument handling removed the embedded
+JSON quotes before curl sent the body.
+
+**Fix:** Build the body with `ConvertTo-Json`, pipe it to `curl.exe`, and use
+`--data-binary '@-'` to read the exact JSON from standard input.
+
+## Temporary SQLite database stayed locked on Windows (2026-07-13)
+
+**Symptom:** Registry tests passed their assertions but cleanup failed with
+`PermissionError: [WinError 32]` for `tickets.sqlite`.
+
+**Cause:** A `sqlite3.Connection` context manager commits or rolls back but
+does not close the connection.
+
+**Fix:** Wrap each short-lived registry connection with `contextlib.closing`
+so Windows can release and delete the database file immediately.
+
 ## Refund came back as 0.0 USD (2026-07-13)
 
 **Symptom:** `refundCreate` succeeded but refunded 0.0 USD, and the order

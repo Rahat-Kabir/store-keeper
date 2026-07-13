@@ -77,6 +77,8 @@ covering normal, fulfilled, old, and high-value policy cases.
 - Applies deterministic cancellation, refund, and address-change policy rules.
 - Requires human approval before every ticket-pipeline order write.
 - Persists pending approvals in SQLite so they survive process restarts.
+- Registers ticket ids separately and refuses accidental reuse of an existing id.
+- Exposes the ticket workflow through a localhost FastAPI operator API.
 - Executes approved cancellations, full refunds, and shipping-address changes
   on Shopify.
 - Answers policy questions from the store's markdown policy documents.
@@ -150,6 +152,9 @@ uv run python scripts/run_ticket.py TICKET-1001 "Please cancel order #1001."
 uv run python scripts/run_ticket.py TICKET-1002 "Change order #1002 to 20 Lake Road, Dhaka, Dhaka 1205, Bangladesh."
 ```
 
+Once a ticket ID has been registered or checkpointed, it cannot start another
+ticket. Keep the same ID only when resuming its pending approval.
+
 If the action passes the policy gate, the graph pauses and prints the pending
 approval. Resume it from the same or a later process:
 
@@ -168,6 +173,23 @@ You can also exercise individual parts of the pipeline:
 ```powershell
 uv run python scripts/classify_ticket.py "Where is my order #1005?"
 uv run python scripts/check_order_policy.py '#1001' cancel_order
+```
+
+### Run the operator API
+
+The API currently supports curl or another HTTP client; the React console is
+the next slice. Start it on localhost:
+
+```powershell
+uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
+```
+
+Create and list tickets:
+
+```powershell
+$ticketBody = @{ticket_text = "How long is your warranty?"} | ConvertTo-Json -Compress
+$ticketBody | curl.exe -s -X POST localhost:8000/api/tickets -H "Content-Type: application/json" --data-binary '@-'
+curl.exe -s localhost:8000/api/tickets
 ```
 
 ## Current limitations

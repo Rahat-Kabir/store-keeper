@@ -54,6 +54,32 @@ comes from the `OPENROUTER_MODEL` env variable.
 - Denied actions carry the relevant document names in `policy_citations`, and
   the drafter receives the policy text so replies cite store policy.
 
+## Ticket registry
+
+`tickets.py` maintains a small SQLite registry at `var/tickets.sqlite` with a
+ticket id, its original text, and creation time. The registry is only the
+listing index for the CLI and future API; it does not duplicate workflow state.
+`get_ticket_status()` reads the ticket's LangGraph checkpoint and derives
+`pending_approval`, `resolved`, or `not_found` from the saved values and
+interrupts. Starting a new CLI ticket refuses an id already present in either
+the registry or the checkpoint database, while approval resumes keep using the
+existing id.
+
+## Operator API
+
+`api/app.py` owns a FastAPI application factory and four synchronous routes:
+`POST /api/tickets`, `GET /api/tickets`, `GET /api/tickets/{ticket_id}`, and
+`POST /api/tickets/{ticket_id}/decision`. The application lifecycle opens the
+shared SQLite checkpointer and compiles the existing graph once. Tests inject a
+stub graph through the same factory.
+
+`api/schemas.py` defines the public Pydantic request and response contracts.
+Responses mirror ticket state, task results, and the approval interrupt rather
+than returning raw checkpoint objects. Duplicate ids and decisions on tickets
+that are not pending return 409; unknown registry ids return 404. Endpoints use
+plain `def` because graph, model, Shopify, and SQLite operations are synchronous.
+The API never calls Shopify, the classifier, or the drafter directly.
+
 ## Ticket graph
 
 `graph/build.py` assembles two LangGraph `StateGraph`s:

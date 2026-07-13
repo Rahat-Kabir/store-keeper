@@ -266,6 +266,7 @@ def await_approval_node(state: TaskState) -> Command[Literal["execute_action", "
         "requested_reference": state["task"]["order_reference"],
         "amount": f"{order_facts['total_amount']} {order_facts['currency_code']}",
         "gate_rule": gate_verdict["rule"],
+        "gate_reason": gate_verdict["reason"],
         "flags": gate_verdict["flags"],
         "current_shipping_address": None,
         "new_shipping_address": None,
