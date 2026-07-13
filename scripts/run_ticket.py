@@ -8,6 +8,11 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from storekeeper.graph.build import build_ticket_graph
+from storekeeper.tickets import (
+    DuplicateTicketError,
+    create_ticket,
+    get_ticket_status,
+)
 
 CHECKPOINT_DATABASE_PATH = Path("var/checkpoints.sqlite")
 
@@ -36,6 +41,16 @@ def main() -> None:
             decision = "approve" if arguments.approve else "reject"
             result = ticket_graph.invoke(Command(resume=decision), config)
         else:
+            assert arguments.ticket_text is not None
+            if get_ticket_status(arguments.ticket_id, ticket_graph) != "not_found":
+                parser.error(
+                    f"Ticket id {arguments.ticket_id!r} already has saved graph state. "
+                    "Use a new id for a new ticket."
+                )
+            try:
+                create_ticket(arguments.ticket_id, arguments.ticket_text)
+            except DuplicateTicketError as error:
+                parser.error(str(error))
             result = ticket_graph.invoke(
                 {
                     "ticket_text": arguments.ticket_text,

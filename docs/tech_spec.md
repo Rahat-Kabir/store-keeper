@@ -54,6 +54,17 @@ comes from the `OPENROUTER_MODEL` env variable.
 - Denied actions carry the relevant document names in `policy_citations`, and
   the drafter receives the policy text so replies cite store policy.
 
+## Ticket registry
+
+`tickets.py` maintains a small SQLite registry at `var/tickets.sqlite` with a
+ticket id, its original text, and creation time. The registry is only the
+listing index for the CLI and future API; it does not duplicate workflow state.
+`get_ticket_status()` reads the ticket's LangGraph checkpoint and derives
+`pending_approval`, `resolved`, or `not_found` from the saved values and
+interrupts. Starting a new CLI ticket refuses an id already present in either
+the registry or the checkpoint database, while approval resumes keep using the
+existing id.
+
 ## Ticket graph
 
 `graph/build.py` assembles two LangGraph `StateGraph`s:

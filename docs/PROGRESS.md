@@ -16,10 +16,11 @@ Feature log: what's built, what's next. Details live in
 - [x] 6b. RAG behind `find_policy_context` (local Chroma, chunk by heading)
 - [x] 5c. Address extraction in the classifier + `orderUpdate` write
 - [x] 7a. Polish: LangSmith trace walkthrough (docs + README teaser image)
+- [x] 8.0. Ticket registry + completed-id reuse guard
 - [ ] 8. Operator console: FastAPI API wrapping the graph (curl-proven first),
       then a Vite + React single-page UI with full CLI feature parity ← next
 - [ ] 7b. Polish: README GIF/screenshots of the operator console (after 8)
-- [ ] Backlog: seed-script argparse, completed-ticket-id reuse guard, scope trim
+- [ ] Backlog: seed-script argparse, scope trim
 
 ## Log
 
@@ -83,6 +84,12 @@ for human approval, then execute Shopify `orderUpdate`.
 the approval interrupt, the post-approval resume where the write node first
 appears, and a policy answer with its verified citation. The README links it
 with a teaser image; the console GIF waits for slice 8.
+
+### 8.0 — Ticket registry (2026-07-13)
+
+A separate SQLite registry now indexes ticket ids for CLI/API listing while
+LangGraph checkpoints remain the source of truth for status. New CLI tickets
+refuse reused registry ids or existing graph threads; approval resumes are unchanged.
 
 ### Hardening — order binding (2026-07-13)
 

@@ -4,6 +4,17 @@ Problems we hit and how we fixed them. Newest first. Format: symptom â†’ cause â
 
 ---
 
+## Temporary SQLite database stayed locked on Windows (2026-07-13)
+
+**Symptom:** Registry tests passed their assertions but cleanup failed with
+`PermissionError: [WinError 32]` for `tickets.sqlite`.
+
+**Cause:** A `sqlite3.Connection` context manager commits or rolls back but
+does not close the connection.
+
+**Fix:** Wrap each short-lived registry connection with `contextlib.closing`
+so Windows can release and delete the database file immediately.
+
 ## Refund came back as 0.0 USD (2026-07-13)
 
 **Symptom:** `refundCreate` succeeded but refunded 0.0 USD, and the order

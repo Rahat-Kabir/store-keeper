@@ -38,6 +38,8 @@ Dangerous store actions are enforced by code and human approval.
   subgraph (lookup → gate → approval interrupt → execute). All routing is
   plain Python; checkpoints persist in `var/checkpoints.sqlite` with
   `thread_id` = ticket id.
+- Ticket registry in `var/tickets.sqlite` indexes ticket ids, text, and creation
+  time for CLI/API listing. Status is always derived from LangGraph checkpoints.
 - Policy corpus in `policies/` (markdown, one topic per file).
   `policy_docs.find_policy_context()` is the retrieval seam: action intents
   read mapped whole docs, while policy questions retrieve top-three heading
@@ -96,6 +98,7 @@ Dangerous store actions are enforced by code and human approval.
 | `src/storekeeper/classify.py` | 140 | LLM task classification and address extraction. |
 | `src/storekeeper/policy/gate.py` | 100 | Pure action-eligibility rules. |
 | `src/storekeeper/policy_docs.py` | 295 | Policy chunking, Chroma index/search, and retrieval seam. |
+| `src/storekeeper/tickets.py` | 135 | Ticket registry, id generation, and checkpoint-derived status. |
 | `src/storekeeper/graph/state.py` | 30 | Ticket and task state schemas. |
 | `src/storekeeper/graph/nodes.py` | 345 | Graph nodes, routes, approval interrupt, policy answers. |
 | `src/storekeeper/graph/build.py` | 110 | Assembles ticket graph + task subgraph. |
@@ -112,6 +115,7 @@ Dangerous store actions are enforced by code and human approval.
 | `tests/test_shopify_writes.py` | 315 | Cancel, refund, and address-write tests. |
 | `tests/test_policy_docs.py` | 150 | Policy chunking, routing, and gate-consistency tests. |
 | `tests/test_graph.py` | 460 | Graph routing, interrupt, resume, and answering tests. |
+| `tests/test_tickets.py` | 120 | Ticket registry, unique-id, and status derivation tests. |
 
 ## Commands
 
