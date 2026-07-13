@@ -11,7 +11,9 @@ Dangerous store actions are enforced by code and human approval.
 - `README.md` — public face of the repo. Update in the same slice when the
   pipeline shape, quickstart commands, or user-visible behavior changes.
 - `docs/VISION.md` — the why. Every feature must serve it; question anything that doesn't.
-- `docs/PROGRESS.md` — session log. Update after changes; read before claiming what's built or what's next.
+- `docs/PROGRESS.md` — feature log: roadmap checklist + ~3 lines per shipped
+  feature. Features only, no repo chores. Update after changes; read before
+  claiming what's built or what's next.
 - `docs/TROUBLESHOOTING.md` — problem log: symptom → cause → fix, newest first.
   Add an entry whenever a non-trivial problem gets solved. Use simple words and
   as few of them as the fix needs — plain sentences, no drama.
