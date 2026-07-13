@@ -37,8 +37,10 @@ Dangerous store actions are enforced by code and human approval.
   plain Python; checkpoints persist in `var/checkpoints.sqlite` with
   `thread_id` = ticket id.
 - Policy corpus in `policies/` (markdown, one topic per file).
-  `policy_docs.find_policy_context()` is the retrieval seam — whole docs now,
-  RAG later — and feeds the answering/drafting LLMs only, never the gate.
+  `policy_docs.find_policy_context()` is the retrieval seam: action intents
+  read mapped whole docs, while policy questions retrieve top-three heading
+  chunks from local Chroma. Policy text feeds the answering/drafting LLMs only,
+  never the gate.
 
 ### Key Decisions
 
@@ -71,6 +73,10 @@ Dangerous store actions are enforced by code and human approval.
   new address yet; slice 5c adds that plus the `orderUpdate` write.
 - **Policy answers cite verified sources** — the answering LLM must name the
   documents it used, and code drops any citation that wasn't actually provided.
+- **Policy RAG stays behind one seam** — `find_policy_context()` owns local
+  Chroma retrieval, while action-denial citations keep deterministic whole-doc
+  lookup. The graph, prompts, citation verification, and gate do not depend on
+  the vector store.
 - **Gate numbers are official policy (30 days / $100)** — locked 2026-07-13;
   `policies/` docs and `gate.py` constants must always tell the same story.
 
@@ -85,7 +91,7 @@ Dangerous store actions are enforced by code and human approval.
 | `src/storekeeper/domain.py` | 55 | Shared business data contracts. |
 | `src/storekeeper/classify.py` | 105 | LLM ticket classification into domain Tasks. |
 | `src/storekeeper/policy/gate.py` | 100 | Pure action-eligibility rules. |
-| `src/storekeeper/policy_docs.py` | 65 | Policy corpus loader — the retrieval seam. |
+| `src/storekeeper/policy_docs.py` | 295 | Policy chunking, Chroma index/search, and retrieval seam. |
 | `src/storekeeper/graph/state.py` | 30 | Ticket and task state schemas. |
 | `src/storekeeper/graph/nodes.py` | 300 | Graph nodes, routes, approval interrupt, policy answers. |
 | `src/storekeeper/graph/build.py` | 110 | Assembles ticket graph + task subgraph. |
@@ -93,12 +99,14 @@ Dangerous store actions are enforced by code and human approval.
 | `scripts/seed_store.py` | 300 | Creates and resumes the 50-order test dataset. |
 | `scripts/check_order_policy.py` | 50 | Runs the gate against one live order. |
 | `scripts/classify_ticket.py` | 25 | Classifies one ticket from the CLI. |
+| `scripts/index_policies.py` | 15 | Rebuilds the local Chroma policy index. |
+| `scripts/search_policy.py` | 30 | Shows top policy chunks and cosine distances. |
 | `scripts/run_ticket.py` | 90 | Runs or resumes one ticket through the graph. |
 | `tests/test_policy_gate.py` | 125 | Policy rule and boundary tests. |
 | `tests/test_shopify_operations.py` | 65 | Order lookup and normalization tests. |
 | `tests/test_classify.py` | 125 | Classifier schema, mapping, and conversion tests. |
 | `tests/test_shopify_writes.py` | 180 | Cancel and refund write-operation tests. |
-| `tests/test_policy_docs.py` | 55 | Policy corpus loader and gate-consistency tests. |
+| `tests/test_policy_docs.py` | 150 | Policy chunking, routing, and gate-consistency tests. |
 | `tests/test_graph.py` | 300 | Graph routing, interrupt, resume, and answering tests. |
 
 ## Commands
@@ -108,6 +116,8 @@ uv sync
 uv run python scripts/smoke_shopify.py
 uv run python scripts/check_order_policy.py '#1001' cancel_order
 uv run python scripts/classify_ticket.py "Please cancel order #1036."
+uv run python scripts/index_policies.py
+uv run python scripts/search_policy.py "How long is your warranty?"
 uv run python scripts/run_ticket.py TICKET-1 "Please cancel order #1001."
 uv run python scripts/run_ticket.py TICKET-1 --approve
 uv run python scripts/seed_store.py --plan
@@ -122,6 +132,7 @@ uv run python -m unittest discover -s tests -v
   from the execute node, after the gate and the human approval. (The seed
   script is a separate, operator-run write path for test data.)
 - The policy gate must not import LLM, LangChain, LangGraph, retrieval, or Shopify code.
+- Rebuild the policy index after editing anything in `policies/`.
 - Run the seed script with `--plan` before live creation.
 - Keep `AGENTS.md` current in the same implementation slice when architecture,
   commands, key files, or project conventions change.

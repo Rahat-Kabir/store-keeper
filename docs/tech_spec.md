@@ -28,12 +28,20 @@ comes from the `OPENROUTER_MODEL` env variable.
 - `policies/` (repo root) holds short markdown store-policy documents. Their
   numbers must match the gate's constants (30-day refunds, $100 high-value
   threshold) — the gate decides, the docs explain.
-- `policy_docs.find_policy_context(task)` is the retrieval seam: action
-  intents map to their policy document, policy questions get the whole
-  corpus. v1 returns whole files; RAG (slice 6b: chunk by heading, FastEmbed
-  embeddings, Chroma in `var/`) replaces this function's internals without
-  touching callers. Policy text feeds the answering and drafting LLMs only —
-  never the gate.
+- `policy_docs.find_policy_context(task, ticket_text)` is the retrieval seam.
+  Action intents still map deterministically to their whole policy document.
+  Policy questions with ticket text query the top three heading chunks from a
+  persistent Chroma collection in `var/policy_index/`; calling without ticket
+  text keeps the whole-corpus fallback for compatibility. The collection uses
+  Chroma's local ONNX `all-MiniLM-L6-v2` embedding function and cosine distance,
+  so indexing and retrieval need no API key. Policy text feeds the answering
+  and drafting LLMs only — never the gate.
+- `scripts/index_policies.py` rebuilds the collection from `policies/*.md`.
+  Each `##` section becomes one chunk containing the document title, heading,
+  and body, with source filename and heading metadata. Run it after changing a
+  policy document. `scripts/search_policy.py` prints the nearest three chunks
+  and their cosine distances so retrieval quality can be checked before graph
+  use.
 - `answer_policy_question` (ticket-level node) answers with structured output
   (`PolicyAnswer`); citations are kept only if they name documents that were
   actually provided. The result is a `TaskResult` with outcome `"answered"`

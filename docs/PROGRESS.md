@@ -13,9 +13,11 @@ Feature log: what's built, what's next. Details live in
 - [x] 5b. Real Shopify writes: cancel + full refund behind approval
 - [x] 6. Policy corpus + policy-question answering with verified citations
 - [x] Hardening: strict order-reference binding
-- [ ] 6b. RAG behind `find_policy_context` (FastEmbed + Chroma, chunk by heading) ← next
-- [ ] 5c. Address extraction in the classifier + `orderUpdate` write
+- [x] 6b. RAG behind `find_policy_context` (local Chroma, chunk by heading)
+- [ ] 5c. Address extraction in the classifier + `orderUpdate` write ← next
 - [ ] 7. Polish: LangSmith walkthrough, README GIF
+- [ ] 8. Operator console: FastAPI API wrapping the graph (curl-proven first),
+      then a Vite + React single-page UI with full CLI feature parity
 - [ ] Backlog: seed-script argparse, completed-ticket-id reuse guard, scope trim
 
 ## Log
@@ -61,6 +63,12 @@ Address changes escalate to a human until 5c.
 `policies/` corpus (numbers locked as real policy: 30 days / $100) behind the
 `find_policy_context()` seam. Policy questions get answered with citations
 verified in code; denied requests cite the relevant policy in their reply.
+
+### 6b — Policy RAG (2026-07-13)
+
+Policy questions retrieve the top three heading chunks from a local Chroma
+index using local MiniLM embeddings. Index and search CLIs prove retrieval
+before graph use; action-denial citations still read deterministic whole docs.
 
 ### Hardening — order binding (2026-07-13)
 

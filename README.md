@@ -123,6 +123,14 @@ uv run python scripts/seed_store.py
 
 ### Run a ticket
 
+Build the local policy index before running policy-question tickets. Re-run
+this command after editing any file in `policies/`:
+
+```powershell
+uv run python scripts/index_policies.py
+uv run python scripts/search_policy.py "How long is your warranty?"
+```
+
 Use a unique ticket ID for each new ticket:
 
 ```powershell

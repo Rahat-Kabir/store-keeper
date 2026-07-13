@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
@@ -223,9 +224,22 @@ class TicketGraphTests(unittest.TestCase):
             ),
         )
 
-        result = ticket_graph.invoke(
-            make_ticket_input("How long is your warranty?"), thread_config("policy-1")
-        )
+        with patch(
+            "storekeeper.policy_docs.search_policy_chunks",
+            return_value=[
+                {
+                    "chunk_id": "warranty.md#coverage",
+                    "document_name": "warranty.md",
+                    "heading": "Coverage",
+                    "document_text": "# Warranty\n\n## Coverage\n\nProducts carry a 12-month warranty.",
+                    "distance": 0.1,
+                }
+            ],
+        ) as mock_search_policy_chunks:
+            result = ticket_graph.invoke(
+                make_ticket_input("How long is your warranty?"),
+                thread_config("policy-1"),
+            )
 
         self.assertNotIn("__interrupt__", result)
         answered_task_result = result["task_results"][0]
@@ -238,6 +252,7 @@ class TicketGraphTests(unittest.TestCase):
         self.assertEqual(result["ticket_outcome"], "resolved")
         self.assertEqual(result["reply_draft"], "Drafted reply.")
         self.assertEqual(fake_shopify_client.write_calls, [])
+        mock_search_policy_chunks.assert_called_once_with("How long is your warranty?")
 
     def test_hallucinated_citations_are_filtered_out(self) -> None:
         ticket_graph, _, _ = build_test_graph(
@@ -248,7 +263,19 @@ class TicketGraphTests(unittest.TestCase):
             ),
         )
 
-        result = ticket_graph.invoke(make_ticket_input(), thread_config("policy-2"))
+        with patch(
+            "storekeeper.policy_docs.search_policy_chunks",
+            return_value=[
+                {
+                    "chunk_id": "warranty.md#coverage",
+                    "document_name": "warranty.md",
+                    "heading": "Coverage",
+                    "document_text": "# Warranty\n\n## Coverage\n\nProducts carry a 12-month warranty.",
+                    "distance": 0.1,
+                }
+            ],
+        ):
+            result = ticket_graph.invoke(make_ticket_input(), thread_config("policy-2"))
 
         self.assertEqual(result["task_results"][0]["policy_citations"], ["warranty.md"])
 

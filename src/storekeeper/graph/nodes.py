@@ -126,7 +126,7 @@ def describe_escalation_reason(tasks: list[Task]) -> str:
 def make_answer_policy_question_node(answer_model: BaseChatModel) -> Callable:
     def answer_policy_question_node(state: TicketState) -> dict:
         question_task = state["tasks"][0]
-        policy_extracts = find_policy_context(question_task)
+        policy_extracts = find_policy_context(question_task, ticket_text=state["ticket_text"])
         structured_answerer = answer_model.with_structured_output(PolicyAnswer)
         policy_answer = structured_answerer.invoke(
             [
