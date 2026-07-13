@@ -44,6 +44,17 @@ The ticket graph wraps a reusable task pipeline. Eligible write actions pause
 at a LangGraph interrupt, and SQLite checkpoints allow the operator to approve
 or reject them from a later process.
 
+### See it in a trace
+
+With LangSmith tracing enabled, every run shows the separation directly: one
+model call for classification, a policy gate with no model inside it, and a
+run tree that ends at the approval interrupt — no write node exists until a
+human approves.
+
+![LangSmith run tree ending at the approval interrupt](docs/images/trace-interrupt.png)
+
+The full walkthrough is in [docs/langsmith.md](docs/langsmith.md).
+
 ## Try it with a free Shopify development store
 
 You do not need a paid Shopify plan or a production store to explore
@@ -193,6 +204,7 @@ tests/              # Offline unit tests
 - [Vision](docs/VISION.md): the project's purpose and engineering thesis
 - [Technical specification](docs/tech_spec.md): the system as currently built
 - [Progress](docs/PROGRESS.md): roadmap and development history
+- [LangSmith walkthrough](docs/langsmith.md): reading a run trace
 - [Testing](docs/testing.md): verification and live-check workflow
 - [Troubleshooting](docs/TROUBLESHOOTING.md): problems encountered and fixes
 

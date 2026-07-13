@@ -15,9 +15,10 @@ Feature log: what's built, what's next. Details live in
 - [x] Hardening: strict order-reference binding
 - [x] 6b. RAG behind `find_policy_context` (local Chroma, chunk by heading)
 - [x] 5c. Address extraction in the classifier + `orderUpdate` write
-- [ ] 7. Polish: LangSmith walkthrough, README GIF ← next
+- [x] 7a. Polish: LangSmith trace walkthrough (docs + README teaser image)
 - [ ] 8. Operator console: FastAPI API wrapping the graph (curl-proven first),
-      then a Vite + React single-page UI with full CLI feature parity
+      then a Vite + React single-page UI with full CLI feature parity ← next
+- [ ] 7b. Polish: README GIF/screenshots of the operator console (after 8)
 - [ ] Backlog: seed-script argparse, completed-ticket-id reuse guard, scope trim
 
 ## Log
@@ -75,6 +76,13 @@ before graph use; action-denial citations still read deterministic whole docs.
 The classifier extracts the requested address without inventing missing fields;
 incomplete requests escalate. Eligible changes show current and final addresses
 for human approval, then execute Shopify `orderUpdate`.
+
+### 7a — LangSmith walkthrough (2026-07-13)
+
+`docs/langsmith.md` reads three real traces: a cancel run whose tree ends at
+the approval interrupt, the post-approval resume where the write node first
+appears, and a policy answer with its verified citation. The README links it
+with a teaser image; the console GIF waits for slice 8.
 
 ### Hardening — order binding (2026-07-13)
 

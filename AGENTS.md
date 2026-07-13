@@ -18,6 +18,8 @@ Dangerous store actions are enforced by code and human approval.
   Add an entry whenever a non-trivial problem gets solved. Use simple words and
   as few of them as the fix needs — plain sentences, no drama.
 - `docs/tech_spec.md` — as-built spec. Update when architecture, schema, or contracts change.
+- `docs/langsmith.md` — trace walkthrough with screenshots in `docs/images/`.
+  Update when graph node names or the pipeline shape change.
 - `docs/testing.md` — verification workflow. Update when it changes.
 - Doc style: clarity first — add words when understanding needs them;
   otherwise fewest words that carry the meaning.
