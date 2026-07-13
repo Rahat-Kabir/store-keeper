@@ -92,8 +92,16 @@ and mirrors the Pydantic response fields with TypeScript interfaces.
 newest-first history on the left and the selected customer message, outcome,
 reply draft, and verified citations on the right. Detailed outcome badges are
 derived from the selected ticket's `task_results`; unselected list rows use
-the checkpoint-derived summary status. Pending tickets are displayed safely,
-but approval details and decision controls remain for slice 8.3.
+the checkpoint-derived summary status.
+
+Pending tickets render the API's approval payload without changing its field
+names: customer-written reference, resolved Shopify order, action, amount, gate
+rule and reason, flags, and current versus proposed shipping addresses. Approve
+and Reject call `POST /api/tickets/{ticket_id}/decision`, disable both controls
+while the synchronous graph resume runs, and replace the card with the returned
+outcome and reply. The approve button names the exact Shopify consequence.
+Concurrent-decision 409s and unknown-ticket 404s remain visible with a refresh
+action instead of clearing the selected ticket.
 
 ## Ticket graph
 

@@ -1,4 +1,4 @@
-import type { TicketDetailResponse, TicketSummary } from './types'
+import type { TicketDecision, TicketDetailResponse, TicketSummary } from './types'
 
 const TICKETS_API_PATH = '/api/tickets'
 
@@ -22,6 +22,32 @@ export async function createTicket(ticketText: string): Promise<TicketDetailResp
   })
 }
 
+export async function decideTicket(
+  ticketId: string,
+  decision: TicketDecision,
+): Promise<TicketDetailResponse> {
+  return requestJson<TicketDetailResponse>(
+    `${TICKETS_API_PATH}/${encodeURIComponent(ticketId)}/decision`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ decision }),
+    },
+  )
+}
+
+export class ApiRequestError extends Error {
+  readonly statusCode: number
+
+  constructor(statusCode: number, message: string) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.statusCode = statusCode
+  }
+}
+
 async function requestJson<ResponseBody>(
   path: string,
   requestOptions?: RequestInit,
@@ -31,7 +57,10 @@ async function requestJson<ResponseBody>(
     const errorBody = (await response.json().catch(() => null)) as {
       detail?: string
     } | null
-    throw new Error(errorBody?.detail ?? `Request failed with status ${response.status}.`)
+    throw new ApiRequestError(
+      response.status,
+      errorBody?.detail ?? `Request failed with status ${response.status}.`,
+    )
   }
   return response.json() as Promise<ResponseBody>
 }

@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { ApiRequestError } from '../api'
 import {
   formatRelativeTime,
   getTicketPresentation,
   getTicketResultMessage,
 } from '../ticketPresentation'
-import type { TicketDetailResponse } from '../types'
+import type { TicketDecision, TicketDetailResponse } from '../types'
+import { ApprovalCard } from './ApprovalCard'
 import { StatusBadge } from './StatusBadge'
 
 interface TicketDetailProps {
@@ -13,6 +15,7 @@ interface TicketDetailProps {
   errorMessage: string | null
   hasTickets: boolean
   onCreateTicket: () => void
+  onDecide: (decision: TicketDecision) => Promise<void>
   onRetry: () => void
 }
 
@@ -22,9 +25,12 @@ export function TicketDetail({
   errorMessage,
   hasTickets,
   onCreateTicket,
+  onDecide,
   onRetry,
 }: TicketDetailProps) {
   const [hasCopiedDraft, setHasCopiedDraft] = useState(false)
+  const [activeDecision, setActiveDecision] = useState<TicketDecision | null>(null)
+  const [decisionError, setDecisionError] = useState<string | null>(null)
 
   if (isLoading) {
     return <p className="main-message">Loading ticket details…</p>
@@ -75,6 +81,18 @@ export function TicketDetail({
     window.setTimeout(() => setHasCopiedDraft(false), 1800)
   }
 
+  const handleDecision = async (decision: TicketDecision) => {
+    setActiveDecision(decision)
+    setDecisionError(null)
+    try {
+      await onDecide(decision)
+    } catch (error) {
+      setDecisionError(getDecisionErrorMessage(error))
+    } finally {
+      setActiveDecision(null)
+    }
+  }
+
   return (
     <article className="ticket-detail">
       <header className="detail-heading">
@@ -96,14 +114,14 @@ export function TicketDetail({
         </div>
       ) : null}
 
-      {ticket.status === 'pending_approval' ? (
-        <section className="content-card pending-placeholder">
-          <span className="card-label">Operator decision required</span>
-          <p>
-            The guarded workflow is paused safely. Approval details and decision controls
-            arrive in Slice 8.3.
-          </p>
-        </section>
+      {ticket.status === 'pending_approval' && ticket.pending_approval ? (
+        <ApprovalCard
+          approval={ticket.pending_approval}
+          activeDecision={activeDecision}
+          errorMessage={decisionError}
+          onDecide={(decision) => void handleDecision(decision)}
+          onRefresh={onRetry}
+        />
       ) : null}
 
       {ticket.reply_draft ? (
@@ -137,4 +155,19 @@ export function TicketDetail({
       ) : null}
     </article>
   )
+}
+
+function getDecisionErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.statusCode === 409) {
+      return 'This ticket was already decided. Refresh it to see the latest result.'
+    }
+    if (error.statusCode === 404) {
+      return 'This ticket no longer exists in the ticket registry.'
+    }
+  }
+  if (error instanceof Error) {
+    return error.message
+  }
+  return 'The decision could not be completed. Please try again.'
 }

@@ -60,3 +60,14 @@ warranty?`, and verify that the new ticket appears first in the list with an
 Answered badge. Its detail view must show a reply draft and the verified
 `warranty.md` citation. The Copy draft button must copy the displayed reply.
 This live flow makes paid OpenRouter calls but performs no Shopify write.
+
+To verify the approval inbox, create a cancellation for a known unfulfilled
+development-store order. Confirm the card shows the customer reference beside
+the resolved order, amount, gate rule and reason, and any flags. Reject one
+eligible ticket and verify the order stays unchanged. Approve another only when
+a real development-store write is intended; verify Shopify records the write
+and the final draft appears immediately. A refund for an order older than 30
+days must resolve as Denied by policy with a citation and never enter the inbox.
+
+For an address-change ticket, confirm the card shows the current and proposed
+addresses side by side. Rejecting it must preserve the original Shopify address.
