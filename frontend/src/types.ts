@@ -1,5 +1,6 @@
 export type TicketStatus = 'pending_approval' | 'resolved' | 'not_found'
 export type TicketOutcome = 'resolved' | 'escalated_to_human'
+export type TicketDecision = 'approve' | 'reject'
 export type TaskOutcome =
   | 'executed'
   | 'rejected_by_human'

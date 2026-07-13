@@ -19,8 +19,9 @@ Feature log: what's built, what's next. Details live in
 - [x] 8.0. Ticket registry + completed-id reuse guard
 - [x] 8.1. FastAPI wrapper: create/list/detail/decision endpoints
 - [x] 8.2. React console: ticket list, create form, and result detail
+- [x] 8.3. Approval inbox: safety details, approve/reject, and final results
 - [ ] 8. Operator console: FastAPI API wrapping the graph (curl-proven first),
-      then a Vite + React single-page UI with full CLI feature parity ← 8.3 next
+      then a Vite + React single-page UI with full CLI feature parity ← 8.4 next
 - [ ] 7b. Polish: README GIF/screenshots of the operator console (after 8)
 - [ ] Backlog: seed-script argparse, scope trim
 
@@ -105,6 +106,13 @@ A Vite + React + TypeScript SPA now creates tickets, browses registry history,
 and renders outcomes, reply drafts, and verified citations through the FastAPI
 API. Plain fetch and CSS reproduce the operator-console mockup without UI or
 state libraries; approval controls remain for 8.3.
+
+### 8.3 — Approval inbox (2026-07-14)
+
+Pending actions now show requested versus resolved order, amount, gate reason,
+flags, and address comparisons before an explicit decision. Approve and Reject
+resume the existing graph through the API and render the final draft immediately;
+conflict and missing-ticket errors stay readable in the card.
 
 ### Hardening — order binding (2026-07-13)
 

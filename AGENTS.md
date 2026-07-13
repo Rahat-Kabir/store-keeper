@@ -45,7 +45,8 @@ Dangerous store actions are enforced by code and human approval.
   it never calls Shopify or an LLM directly.
 - Vite + React + TypeScript operator console in `frontend/` uses plain `fetch`
   against `/api/`. The development server proxies API calls to FastAPI; the
-  current read-side UI creates, lists, and displays ticket results and drafts.
+  UI creates and lists tickets, displays results and drafts, and resumes pending
+  actions through a safety-detailed approval inbox.
 - Policy corpus in `policies/` (markdown, one topic per file).
   `policy_docs.find_policy_context()` is the retrieval seam: action intents
   read mapped whole docs, while policy questions retrieve top-three heading
@@ -107,9 +108,10 @@ Dangerous store actions are enforced by code and human approval.
 | `src/storekeeper/tickets.py` | 165 | Ticket registry, id generation, lookup, and checkpoint-derived status. |
 | `src/storekeeper/api/app.py` | 195 | FastAPI lifecycle, graph seam, and ticket endpoints. |
 | `src/storekeeper/api/schemas.py` | 95 | Validated operator API request and response models. |
-| `frontend/src/App.tsx` | 160 | Operator-console shell, selection, refresh, and create flow. |
-| `frontend/src/api.ts` | 40 | Typed fetch calls for ticket create, list, and detail. |
-| `frontend/src/components/TicketDetail.tsx` | 140 | Ticket result, draft, citation, and pending-state display. |
+| `frontend/src/App.tsx` | 170 | Operator-console shell, selection, refresh, create, and decision flow. |
+| `frontend/src/api.ts` | 70 | Typed fetch calls for ticket create, list, detail, and decisions. |
+| `frontend/src/components/TicketDetail.tsx` | 180 | Ticket result, draft, citation, and pending-state display. |
+| `frontend/src/components/ApprovalCard.tsx` | 185 | Approval safety details, address comparison, and decision controls. |
 | `src/storekeeper/graph/state.py` | 30 | Ticket and task state schemas. |
 | `src/storekeeper/graph/nodes.py` | 345 | Graph nodes, routes, approval interrupt, policy answers. |
 | `src/storekeeper/graph/build.py` | 110 | Assembles ticket graph + task subgraph. |

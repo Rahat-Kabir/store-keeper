@@ -4,6 +4,17 @@ Problems we hit and how we fixed them. Newest first. Format: symptom â†’ cause â
 
 ---
 
+## Operator console showed "Unexpected token '<'" (2026-07-14)
+
+**Symptom:** The ticket list failed with `Unexpected token '<'` because the
+`/api/tickets` response started with `<!doctype html>`.
+
+**Cause:** A stale Vite process was serving the SPA without the current
+`/api` proxy configuration, so the API path fell back to `index.html`.
+
+**Fix:** Stop that Vite process and restart `npm run dev` from `frontend/`.
+Confirm `http://127.0.0.1:5173/api/tickets` returns JSON before reloading the UI.
+
 ## PowerShell curl request reached FastAPI with invalid JSON (2026-07-13)
 
 **Symptom:** A JSON-looking `curl.exe -d` command returned 422 with

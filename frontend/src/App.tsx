@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
-import { createTicket, getTicket, listTickets } from './api'
+import { createTicket, decideTicket, getTicket, listTickets } from './api'
 import { TicketDetail } from './components/TicketDetail'
 import { TicketForm } from './components/TicketForm'
 import { TicketList } from './components/TicketList'
-import type { TicketDetailResponse, TicketSummary } from './types'
+import type { TicketDecision, TicketDetailResponse, TicketSummary } from './types'
 
 function App() {
   const [tickets, setTickets] = useState<TicketSummary[]>([])
@@ -90,6 +90,16 @@ function App() {
     await refreshTickets(createdTicket.ticket_id)
   }
 
+  const handleTicketDecision = async (decision: TicketDecision) => {
+    if (!selectedTicketId) {
+      throw new Error('Select a ticket before making a decision.')
+    }
+
+    const decidedTicket = await decideTicket(selectedTicketId, decision)
+    setSelectedTicket(decidedTicket)
+    await refreshTickets(decidedTicket.ticket_id)
+  }
+
   const pendingApprovalCount = tickets.filter(
     (ticket) => ticket.status === 'pending_approval',
   ).length
@@ -134,11 +144,13 @@ function App() {
               />
             ) : (
               <TicketDetail
+                key={selectedTicketId ?? 'no-ticket'}
                 ticket={selectedTicket}
                 isLoading={isLoadingDetail}
                 errorMessage={detailError}
                 hasTickets={tickets.length > 0}
                 onCreateTicket={() => setIsCreatingTicket(true)}
+                onDecide={handleTicketDecision}
                 onRetry={() => setDetailRefreshKey((currentKey) => currentKey + 1)}
               />
             )}

@@ -5,8 +5,9 @@ understand customer requests and draft replies, while deterministic code and
 human approval control sensitive order actions.
 
 > **Project status:** Early v1 in active development. The CLI, localhost API,
-> and read-side React operator console are built; browser approval controls are
-> next. It is designed for development stores and is not production-ready yet.
+> and React operator console have full ticket-workflow parity; single-process
+> static serving is next. It is designed for development stores and is not
+> production-ready yet.
 
 ## Why storekeeper
 
@@ -79,7 +80,7 @@ covering normal, fulfilled, old, and high-value policy cases.
 - Persists pending approvals in SQLite so they survive process restarts.
 - Registers ticket ids separately and refuses accidental reuse of an existing id.
 - Exposes the ticket workflow through a localhost FastAPI operator API.
-- Creates, lists, and reads tickets in a local React operator console.
+- Creates, lists, reviews, approves, and rejects tickets in a local React console.
 - Executes approved cancellations, full refunds, and shipping-address changes
   on Shopify.
 - Answers policy questions from the store's markdown policy documents.
@@ -193,9 +194,14 @@ npm install
 npm run dev
 ```
 
-The console can create tickets, browse history, and display outcomes, reply
-drafts, and verified citations. Approval and rejection controls remain on the
-CLI or API until the next UI slice.
+The console can create tickets, browse history, display outcomes, reply drafts,
+and verified citations, and review pending Shopify actions. Approval cards show
+the customer reference next to the resolved order, the gate reason and flags,
+and current versus proposed addresses before an operator approves or rejects.
+
+> **Warning:** Approving a pending action in the console immediately resumes
+> the graph and can execute a real cancellation, refund, or address change on
+> the connected Shopify store.
 
 You can also create and list tickets directly through the API:
 
@@ -207,7 +213,6 @@ curl.exe -s localhost:8000/api/tickets
 
 ## Current limitations
 
-- The React console does not yet expose approval and rejection controls.
 - It is currently designed for one operator working with a development store.
 - Address changes require the complete new street, city, state or province,
   postal code, and country. Incomplete requests escalate to a human.
