@@ -23,7 +23,14 @@ Feature log: what's built, what's next. Details live in
 - [x] 8. Operator console: FastAPI API wrapping the graph and a Vite + React
       single-page UI with full CLI feature parity and single-process serving
 - [ ] 7b. Polish: README GIF/screenshots of the operator console (after 8)
-- [ ] Backlog: seed-script argparse, scope trim
+- [ ] v2. Multi-request tickets: a planner fans tasks out via `Send` to the
+      existing task subgraph (actions) or a research path (questions), and a
+      composer merges the task results into one reply. Approval stays a graph
+      stage inside the action path — never its own agent. The v1 sockets are
+      already in place: the task subgraph, the classifier's task list, and
+      `draft_reply` drafting from structured results.
+- [ ] Backlog: seed-script argparse, scope trim, retry story for tickets
+      whose graph run failed after registration
 
 ## Log
 
