@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import StateSnapshot
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+CHECKPOINT_DATABASE_PATH = REPOSITORY_ROOT / "var" / "checkpoints.sqlite"
 TICKET_DATABASE_PATH = REPOSITORY_ROOT / "var" / "tickets.sqlite"
 
 TicketStatus = Literal["pending_approval", "resolved", "not_found"]
@@ -104,6 +106,30 @@ def list_tickets(
     ]
 
 
+def get_ticket(
+    ticket_id: str,
+    *,
+    database_path: Path = TICKET_DATABASE_PATH,
+) -> TicketRecord | None:
+    _initialize_ticket_database(database_path)
+    with closing(sqlite3.connect(database_path)) as connection:
+        row = connection.execute(
+            """
+            SELECT ticket_id, ticket_text, created_at
+            FROM tickets
+            WHERE ticket_id = ?
+            """,
+            (ticket_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "ticket_id": row[0],
+        "ticket_text": row[1],
+        "created_at": row[2],
+    }
+
+
 def get_ticket_status(
     ticket_id: str,
     ticket_graph: CompiledStateGraph,
@@ -111,6 +137,10 @@ def get_ticket_status(
     state_snapshot = ticket_graph.get_state(
         {"configurable": {"thread_id": ticket_id}}
     )
+    return derive_ticket_status(state_snapshot)
+
+
+def derive_ticket_status(state_snapshot: StateSnapshot) -> TicketStatus:
     if not state_snapshot.values:
         return "not_found"
     if state_snapshot.interrupts:

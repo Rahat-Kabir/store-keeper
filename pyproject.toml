@@ -15,6 +15,8 @@ dependencies = [
     "langgraph>=1.2.9",
     "langgraph-checkpoint-sqlite>=3.1.0",
     "chromadb>=1.5.9",
+    "fastapi>=0.139.0",
+    "uvicorn>=0.51.0",
 ]
 
 [tool.setuptools.packages.find]

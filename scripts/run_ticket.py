@@ -2,19 +2,17 @@
 
 import argparse
 import json
-from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from storekeeper.graph.build import build_ticket_graph
 from storekeeper.tickets import (
+    CHECKPOINT_DATABASE_PATH,
     DuplicateTicketError,
     create_ticket,
     get_ticket_status,
 )
-
-CHECKPOINT_DATABASE_PATH = Path("var/checkpoints.sqlite")
 
 
 def main() -> None:
@@ -73,6 +71,7 @@ def print_result(ticket_id: str, result: dict) -> None:
         print(f"  Customer wrote: \"{pending_approval['requested_reference']}\"")
         print(f"  Amount: {pending_approval['amount']}")
         print(f"  Gate:   passed ({pending_approval['gate_rule']})")
+        print(f"  Reason: {pending_approval['gate_reason']}")
         if pending_approval["new_shipping_address"] is not None:
             print(
                 "  Current address: "

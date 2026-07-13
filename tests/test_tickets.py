@@ -7,6 +7,7 @@ from storekeeper.tickets import (
     DuplicateTicketError,
     create_ticket,
     generate_ticket_id,
+    get_ticket,
     get_ticket_status,
     list_tickets,
 )
@@ -64,6 +65,20 @@ class TicketRegistryTests(unittest.TestCase):
                 "Different ticket",
                 database_path=self.database_path,
             )
+
+    def test_get_ticket_returns_one_record_or_none(self) -> None:
+        create_ticket(
+            "TICKET-1",
+            "Original ticket",
+            database_path=self.database_path,
+        )
+
+        ticket = get_ticket("TICKET-1", database_path=self.database_path)
+        missing_ticket = get_ticket("UNKNOWN", database_path=self.database_path)
+
+        assert ticket is not None
+        self.assertEqual(ticket["ticket_text"], "Original ticket")
+        self.assertIsNone(missing_ticket)
 
     def test_generated_ticket_ids_are_unique(self) -> None:
         generated_ticket_ids = {generate_ticket_id() for _ in range(100)}

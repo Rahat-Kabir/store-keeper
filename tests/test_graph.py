@@ -173,6 +173,10 @@ class TicketGraphTests(unittest.TestCase):
         self.assertEqual(pending_approval["order"], "#1036")
         self.assertEqual(pending_approval["requested_reference"], "#1036")
         self.assertEqual(pending_approval["gate_rule"], "cancel_order_unfulfilled")
+        self.assertEqual(
+            pending_approval["gate_reason"],
+            "The order is unfulfilled and can be cancelled.",
+        )
 
     def test_approval_executes_the_real_cancel_write(self) -> None:
         ticket_graph, fake_shopify_client, _ = build_test_graph(

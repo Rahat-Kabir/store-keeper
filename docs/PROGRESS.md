@@ -17,8 +17,9 @@ Feature log: what's built, what's next. Details live in
 - [x] 5c. Address extraction in the classifier + `orderUpdate` write
 - [x] 7a. Polish: LangSmith trace walkthrough (docs + README teaser image)
 - [x] 8.0. Ticket registry + completed-id reuse guard
+- [x] 8.1. FastAPI wrapper: create/list/detail/decision endpoints
 - [ ] 8. Operator console: FastAPI API wrapping the graph (curl-proven first),
-      then a Vite + React single-page UI with full CLI feature parity ← next
+      then a Vite + React single-page UI with full CLI feature parity ← 8.2 next
 - [ ] 7b. Polish: README GIF/screenshots of the operator console (after 8)
 - [ ] Backlog: seed-script argparse, scope trim
 
@@ -90,6 +91,12 @@ with a teaser image; the console GIF waits for slice 8.
 A separate SQLite registry now indexes ticket ids for CLI/API listing while
 LangGraph checkpoints remain the source of truth for status. New CLI tickets
 refuse reused registry ids or existing graph threads; approval resumes are unchanged.
+
+### 8.1 — FastAPI wrapper (2026-07-13)
+
+The localhost API now creates, lists, reads, and decides tickets through the
+existing graph. Pydantic models expose validated state and the approval payload,
+including the gate reason; stubbed HTTP tests make no Shopify or model calls.
 
 ### Hardening — order binding (2026-07-13)
 

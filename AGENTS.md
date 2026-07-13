@@ -40,6 +40,9 @@ Dangerous store actions are enforced by code and human approval.
   `thread_id` = ticket id.
 - Ticket registry in `var/tickets.sqlite` indexes ticket ids, text, and creation
   time for CLI/API listing. Status is always derived from LangGraph checkpoints.
+- FastAPI operator API in `api/` exposes ticket create, list, detail, and
+  approval decisions under `/api/`. It invokes the graph and registry only;
+  it never calls Shopify or an LLM directly.
 - Policy corpus in `policies/` (markdown, one topic per file).
   `policy_docs.find_policy_context()` is the retrieval seam: action intents
   read mapped whole docs, while policy questions retrieve top-three heading
@@ -98,7 +101,9 @@ Dangerous store actions are enforced by code and human approval.
 | `src/storekeeper/classify.py` | 140 | LLM task classification and address extraction. |
 | `src/storekeeper/policy/gate.py` | 100 | Pure action-eligibility rules. |
 | `src/storekeeper/policy_docs.py` | 295 | Policy chunking, Chroma index/search, and retrieval seam. |
-| `src/storekeeper/tickets.py` | 135 | Ticket registry, id generation, and checkpoint-derived status. |
+| `src/storekeeper/tickets.py` | 165 | Ticket registry, id generation, lookup, and checkpoint-derived status. |
+| `src/storekeeper/api/app.py` | 195 | FastAPI lifecycle, graph seam, and ticket endpoints. |
+| `src/storekeeper/api/schemas.py` | 95 | Validated operator API request and response models. |
 | `src/storekeeper/graph/state.py` | 30 | Ticket and task state schemas. |
 | `src/storekeeper/graph/nodes.py` | 345 | Graph nodes, routes, approval interrupt, policy answers. |
 | `src/storekeeper/graph/build.py` | 110 | Assembles ticket graph + task subgraph. |
@@ -115,7 +120,8 @@ Dangerous store actions are enforced by code and human approval.
 | `tests/test_shopify_writes.py` | 315 | Cancel, refund, and address-write tests. |
 | `tests/test_policy_docs.py` | 150 | Policy chunking, routing, and gate-consistency tests. |
 | `tests/test_graph.py` | 460 | Graph routing, interrupt, resume, and answering tests. |
-| `tests/test_tickets.py` | 120 | Ticket registry, unique-id, and status derivation tests. |
+| `tests/test_tickets.py` | 135 | Ticket registry, unique-id, lookup, and status tests. |
+| `tests/test_api.py` | 220 | Stubbed HTTP workflow and API error-contract tests. |
 
 ## Commands
 
@@ -130,6 +136,7 @@ uv run python scripts/search_policy.py "How long is your warranty?"
 uv run python scripts/run_ticket.py TICKET-1 "Please cancel order #1001."
 uv run python scripts/run_ticket.py TICKET-2 "Change order #1002 to 20 Lake Road, Dhaka, Dhaka 1205, Bangladesh."
 uv run python scripts/run_ticket.py TICKET-1 --approve
+uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
 uv run python scripts/seed_store.py --plan
 uv run python scripts/seed_store.py
 uv run python -m unittest discover -s tests -v
