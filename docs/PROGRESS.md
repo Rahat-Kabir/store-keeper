@@ -20,8 +20,8 @@ Feature log: what's built, what's next. Details live in
 - [x] 8.1. FastAPI wrapper: create/list/detail/decision endpoints
 - [x] 8.2. React console: ticket list, create form, and result detail
 - [x] 8.3. Approval inbox: safety details, approve/reject, and final results
-- [ ] 8. Operator console: FastAPI API wrapping the graph (curl-proven first),
-      then a Vite + React single-page UI with full CLI feature parity ← 8.4 next
+- [x] 8. Operator console: FastAPI API wrapping the graph and a Vite + React
+      single-page UI with full CLI feature parity and single-process serving
 - [ ] 7b. Polish: README GIF/screenshots of the operator console (after 8)
 - [ ] Backlog: seed-script argparse, scope trim
 
@@ -113,6 +113,12 @@ Pending actions now show requested versus resolved order, amount, gate reason,
 flags, and address comparisons before an explicit decision. Approve and Reject
 resume the existing graph through the API and render the final draft immediately;
 conflict and missing-ticket errors stay readable in the card.
+
+### 8.4 — Single-process serving (2026-07-14)
+
+FastAPI now serves the built React console at `/` after registering `/api/`,
+so one local process runs the complete operator workflow. API-only startup
+still works when `frontend/dist` is absent; HTTP tests cover both paths.
 
 ### Hardening — order binding (2026-07-13)
 

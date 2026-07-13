@@ -5,9 +5,9 @@ understand customer requests and draft replies, while deterministic code and
 human approval control sensitive order actions.
 
 > **Project status:** Early v1 in active development. The CLI, localhost API,
-> and React operator console have full ticket-workflow parity; single-process
-> static serving is next. It is designed for development stores and is not
-> production-ready yet.
+> and React operator console have full ticket-workflow parity. FastAPI can serve
+> the built console and API from one local process. It is designed for
+> development stores and is not production-ready yet.
 
 ## Why storekeeper
 
@@ -180,7 +180,7 @@ uv run python scripts/check_order_policy.py '#1001' cancel_order
 
 ### Run the operator console
 
-Start FastAPI in the first PowerShell terminal:
+For frontend development, start FastAPI in the first PowerShell terminal:
 
 ```powershell
 uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
@@ -193,6 +193,21 @@ cd frontend
 npm install
 npm run dev
 ```
+
+To run the built console and API from one process, build the frontend and then
+start FastAPI from the repository root:
+
+```powershell
+cd frontend
+npm install
+npm run build
+cd ..
+uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000`. FastAPI serves `frontend/dist` at `/` and keeps
+the ticket API under `/api/`. If the build directory is absent, the API still
+starts, but `/` returns 404 until the frontend is built.
 
 The console can create tickets, browse history, display outcomes, reply drafts,
 and verified citations, and review pending Shopify actions. Approval cards show
@@ -214,6 +229,7 @@ curl.exe -s localhost:8000/api/tickets
 ## Current limitations
 
 - It is currently designed for one operator working with a development store.
+- The localhost console has no authentication and must not be exposed publicly.
 - Address changes require the complete new street, city, state or province,
   postal code, and country. Incomplete requests escalate to a human.
 - Multi-request tickets currently escalate instead of executing several tasks.

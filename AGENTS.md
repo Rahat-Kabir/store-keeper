@@ -46,7 +46,8 @@ Dangerous store actions are enforced by code and human approval.
 - Vite + React + TypeScript operator console in `frontend/` uses plain `fetch`
   against `/api/`. The development server proxies API calls to FastAPI; the
   UI creates and lists tickets, displays results and drafts, and resumes pending
-  actions through a safety-detailed approval inbox.
+  actions through a safety-detailed approval inbox. After `npm run build`,
+  FastAPI serves `frontend/dist` at `/`; the API still starts without a build.
 - Policy corpus in `policies/` (markdown, one topic per file).
   `policy_docs.find_policy_context()` is the retrieval seam: action intents
   read mapped whole docs, while policy questions retrieve top-three heading
@@ -106,7 +107,7 @@ Dangerous store actions are enforced by code and human approval.
 | `src/storekeeper/policy/gate.py` | 100 | Pure action-eligibility rules. |
 | `src/storekeeper/policy_docs.py` | 295 | Policy chunking, Chroma index/search, and retrieval seam. |
 | `src/storekeeper/tickets.py` | 165 | Ticket registry, id generation, lookup, and checkpoint-derived status. |
-| `src/storekeeper/api/app.py` | 195 | FastAPI lifecycle, graph seam, and ticket endpoints. |
+| `src/storekeeper/api/app.py` | 205 | FastAPI lifecycle, graph seam, ticket endpoints, and built-console serving. |
 | `src/storekeeper/api/schemas.py` | 95 | Validated operator API request and response models. |
 | `frontend/src/App.tsx` | 170 | Operator-console shell, selection, refresh, create, and decision flow. |
 | `frontend/src/api.ts` | 70 | Typed fetch calls for ticket create, list, detail, and decisions. |
@@ -129,7 +130,7 @@ Dangerous store actions are enforced by code and human approval.
 | `tests/test_policy_docs.py` | 150 | Policy chunking, routing, and gate-consistency tests. |
 | `tests/test_graph.py` | 460 | Graph routing, interrupt, resume, and answering tests. |
 | `tests/test_tickets.py` | 135 | Ticket registry, unique-id, lookup, and status tests. |
-| `tests/test_api.py` | 220 | Stubbed HTTP workflow and API error-contract tests. |
+| `tests/test_api.py` | 275 | Stubbed HTTP workflow, API errors, and static-serving tests. |
 
 ## Commands
 
@@ -150,6 +151,8 @@ npm install
 npm run dev
 npm run build
 npm run lint
+cd ..
+uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
 uv run python scripts/seed_store.py --plan
 uv run python scripts/seed_store.py
 uv run python -m unittest discover -s tests -v

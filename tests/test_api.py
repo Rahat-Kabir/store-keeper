@@ -109,6 +109,7 @@ class TicketApiTests(unittest.TestCase):
         application = create_app(
             ticket_graph=self.ticket_graph,
             ticket_database_path=self.ticket_database_path,
+            frontend_dist_path=Path(self.temporary_directory.name) / "missing-dist",
         )
         self.test_client_context = TestClient(application)
         self.client = self.test_client_context.__enter__()
@@ -233,6 +234,52 @@ class TicketApiTests(unittest.TestCase):
 
         self.assertEqual(empty_ticket_response.status_code, 422)
         self.assertEqual(invalid_decision_response.status_code, 422)
+
+
+class StaticFrontendTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.temporary_directory_path = Path(self.temporary_directory.name)
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def test_built_frontend_is_served_without_capturing_api_routes(self) -> None:
+        frontend_dist_path = self.temporary_directory_path / "dist"
+        frontend_dist_path.mkdir()
+        (frontend_dist_path / "index.html").write_text(
+            "<html><body>storekeeper console</body></html>",
+            encoding="utf-8",
+        )
+        application = create_app(
+            ticket_graph=StubTicketGraph(),
+            ticket_database_path=self.temporary_directory_path / "tickets.sqlite",
+            frontend_dist_path=frontend_dist_path,
+        )
+
+        with TestClient(application) as client:
+            frontend_response = client.get("/")
+            api_response = client.get("/api/tickets")
+
+        self.assertEqual(frontend_response.status_code, 200)
+        self.assertIn("storekeeper console", frontend_response.text)
+        self.assertEqual(api_response.status_code, 200)
+        self.assertEqual(api_response.json(), [])
+
+    def test_api_starts_when_frontend_build_is_missing(self) -> None:
+        application = create_app(
+            ticket_graph=StubTicketGraph(),
+            ticket_database_path=self.temporary_directory_path / "tickets.sqlite",
+            frontend_dist_path=self.temporary_directory_path / "missing-dist",
+        )
+
+        with TestClient(application) as client:
+            frontend_response = client.get("/")
+            api_response = client.get("/api/tickets")
+
+        self.assertEqual(frontend_response.status_code, 404)
+        self.assertEqual(api_response.status_code, 200)
+        self.assertEqual(api_response.json(), [])
 
 
 if __name__ == "__main__":

@@ -71,3 +71,19 @@ days must resolve as Denied by policy with a citation and never enter the inbox.
 
 For an address-change ticket, confirm the card shows the current and proposed
 addresses side by side. Rejecting it must preserve the original Shopify address.
+
+To verify single-process serving, stop Vite after the frontend checks, build the
+console, and run only FastAPI:
+
+```powershell
+cd frontend
+npm run build
+cd ..
+uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000` and repeat the create, detail, and safe reject
+flow. Confirm `curl.exe -s -I http://127.0.0.1:8000/` returns an HTML response
+and `curl.exe -s http://127.0.0.1:8000/api/tickets` still returns JSON. Removing
+or renaming `frontend/dist` is not required for normal verification; the unit
+suite covers API-only startup when the build is absent.

@@ -87,6 +87,11 @@ development, Vite runs on `127.0.0.1:5173` and proxies `/api` to FastAPI on
 `127.0.0.1:8000`, so no CORS configuration is needed. It uses plain `fetch`
 and mirrors the Pydantic response fields with TypeScript interfaces.
 
+For a built run, Vite writes static assets to `frontend/dist`. The FastAPI app
+mounts that directory at `/` after registering `/api/`, so one process serves
+both the console and API without changing the frontend's relative requests.
+The mount is skipped when `dist` is absent, preserving API-only development.
+
 `App.tsx` owns ticket selection, list refresh, and new-ticket mode.
 `TicketList`, `TicketForm`, and `TicketDetail` render the two-column console:
 newest-first history on the left and the selected customer message, outcome,
@@ -102,6 +107,9 @@ while the synchronous graph resume runs, and replace the card with the returned
 outcome and reply. The approve button names the exact Shopify consequence.
 Concurrent-decision 409s and unknown-ticket 404s remain visible with a refresh
 action instead of clearing the selected ticket.
+
+The console is localhost-only and has no authentication. It is not a public
+deployment surface.
 
 ## Ticket graph
 

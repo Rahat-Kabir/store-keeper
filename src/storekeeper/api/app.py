@@ -13,6 +13,7 @@ from fastapi import (
     Path as PathParameter,
     Request,
 )
+from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, StateSnapshot
@@ -39,6 +40,7 @@ from storekeeper.tickets import (
 )
 
 router = APIRouter(prefix="/api/tickets", tags=["tickets"])
+FRONTEND_DIST_PATH = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 
 def get_request_ticket_graph(request: Request) -> CompiledStateGraph:
@@ -140,6 +142,7 @@ def create_app(
     ticket_graph: CompiledStateGraph | None = None,
     ticket_database_path: Path = TICKET_DATABASE_PATH,
     checkpoint_database_path: Path = CHECKPOINT_DATABASE_PATH,
+    frontend_dist_path: Path = FRONTEND_DIST_PATH,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -156,6 +159,12 @@ def create_app(
 
     application = FastAPI(title="storekeeper operator API", lifespan=lifespan)
     application.include_router(router)
+    if frontend_dist_path.is_dir():
+        application.mount(
+            "/",
+            StaticFiles(directory=frontend_dist_path, html=True),
+            name="operator-console",
+        )
     return application
 
 
