@@ -25,6 +25,18 @@ def make_shopify_order(fulfillment_status: str = "UNFULFILLED") -> dict:
         "name": "#1001",
         "processedAt": "2026-07-10T12:00:00+00:00",
         "displayFulfillmentStatus": fulfillment_status,
+        "shippingAddress": {
+            "firstName": "Rahat",
+            "lastName": "Kabir",
+            "company": None,
+            "address1": "10 Old Road",
+            "address2": "Unit 2",
+            "city": "Austin",
+            "province": "Texas",
+            "zip": "78701",
+            "country": "United States",
+            "phone": "+1 555 0100",
+        },
         "totalPriceSet": {
             "shopMoney": {"amount": "125.50", "currencyCode": "USD"}
         },
@@ -43,6 +55,9 @@ class ShopifyOperationsTests(unittest.TestCase):
         self.assertFalse(order["facts"]["fulfilled"])
         self.assertEqual(order["facts"]["total_amount"], Decimal("125.50"))
         self.assertEqual(order["facts"]["currency_code"], "USD")
+        assert order["shipping_address"] is not None
+        self.assertEqual(order["shipping_address"]["first_name"], "Rahat")
+        self.assertEqual(order["shipping_address"]["address1"], "10 Old Road")
 
     def test_partial_fulfillment_is_treated_as_fulfilled_for_safety(self) -> None:
         client = FakeShopifyClient([make_shopify_order("PARTIALLY_FULFILLED")])

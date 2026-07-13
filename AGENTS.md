@@ -69,8 +69,10 @@ Dangerous store actions are enforced by code and human approval.
   orders get their items marked refunded.
 - **`refundCreate` uses an order-derived idempotency key** — required by the
   2026-04 API, and it makes a re-executed graph node unable to refund twice.
-- **Address changes escalate to a human** — the classifier doesn't extract the
-  new address yet; slice 5c adds that plus the `orderUpdate` write.
+- **Address changes never guess missing fields** — the classifier extracts only
+  what the customer supplied; incomplete addresses escalate. Complete requests
+  still pass the gate and approval interrupt before `orderUpdate`, and omitted
+  recipient identity fields are preserved from the current order.
 - **Policy answers cite verified sources** — the answering LLM must name the
   documents it used, and code drops any citation that wasn't actually provided.
 - **Policy RAG stays behind one seam** — `find_policy_context()` owns local
@@ -86,28 +88,28 @@ Dangerous store actions are enforced by code and human approval.
 |---|---:|---|
 | `src/storekeeper/config.py` | 65 | Loads and validates Shopify + classifier settings. |
 | `src/storekeeper/shopify/client.py` | 100 | Handles auth and GraphQL requests. |
-| `src/storekeeper/shopify/operations.py` | 120 | Order lookup with strict reference binding. |
-| `src/storekeeper/shopify/writes.py` | 180 | Order cancel and refund writes (post-approval only). |
-| `src/storekeeper/domain.py` | 55 | Shared business data contracts. |
-| `src/storekeeper/classify.py` | 105 | LLM ticket classification into domain Tasks. |
+| `src/storekeeper/shopify/operations.py` | 130 | Order lookup with strict binding and address normalization. |
+| `src/storekeeper/shopify/writes.py` | 295 | Approved cancel, refund, and address-update writes. |
+| `src/storekeeper/domain.py` | 80 | Shared business data contracts. |
+| `src/storekeeper/classify.py` | 140 | LLM task classification and address extraction. |
 | `src/storekeeper/policy/gate.py` | 100 | Pure action-eligibility rules. |
 | `src/storekeeper/policy_docs.py` | 295 | Policy chunking, Chroma index/search, and retrieval seam. |
 | `src/storekeeper/graph/state.py` | 30 | Ticket and task state schemas. |
-| `src/storekeeper/graph/nodes.py` | 300 | Graph nodes, routes, approval interrupt, policy answers. |
+| `src/storekeeper/graph/nodes.py` | 345 | Graph nodes, routes, approval interrupt, policy answers. |
 | `src/storekeeper/graph/build.py` | 110 | Assembles ticket graph + task subgraph. |
 | `scripts/smoke_shopify.py` | 30 | Verifies the live store connection. |
 | `scripts/seed_store.py` | 300 | Creates and resumes the 50-order test dataset. |
 | `scripts/check_order_policy.py` | 50 | Runs the gate against one live order. |
-| `scripts/classify_ticket.py` | 25 | Classifies one ticket from the CLI. |
+| `scripts/classify_ticket.py` | 30 | Classifies one ticket from the CLI. |
 | `scripts/index_policies.py` | 15 | Rebuilds the local Chroma policy index. |
 | `scripts/search_policy.py` | 30 | Shows top policy chunks and cosine distances. |
-| `scripts/run_ticket.py` | 90 | Runs or resumes one ticket through the graph. |
+| `scripts/run_ticket.py` | 95 | Runs or resumes one ticket through the graph. |
 | `tests/test_policy_gate.py` | 125 | Policy rule and boundary tests. |
-| `tests/test_shopify_operations.py` | 65 | Order lookup and normalization tests. |
-| `tests/test_classify.py` | 125 | Classifier schema, mapping, and conversion tests. |
-| `tests/test_shopify_writes.py` | 180 | Cancel and refund write-operation tests. |
+| `tests/test_shopify_operations.py` | 115 | Order lookup and normalization tests. |
+| `tests/test_classify.py` | 190 | Classifier schema, mapping, and conversion tests. |
+| `tests/test_shopify_writes.py` | 315 | Cancel, refund, and address-write tests. |
 | `tests/test_policy_docs.py` | 150 | Policy chunking, routing, and gate-consistency tests. |
-| `tests/test_graph.py` | 300 | Graph routing, interrupt, resume, and answering tests. |
+| `tests/test_graph.py` | 460 | Graph routing, interrupt, resume, and answering tests. |
 
 ## Commands
 
@@ -116,9 +118,11 @@ uv sync
 uv run python scripts/smoke_shopify.py
 uv run python scripts/check_order_policy.py '#1001' cancel_order
 uv run python scripts/classify_ticket.py "Please cancel order #1036."
+uv run python scripts/classify_ticket.py "Change order #1036 to 20 Lake Road, Dhaka, Dhaka 1205, Bangladesh."
 uv run python scripts/index_policies.py
 uv run python scripts/search_policy.py "How long is your warranty?"
 uv run python scripts/run_ticket.py TICKET-1 "Please cancel order #1001."
+uv run python scripts/run_ticket.py TICKET-2 "Change order #1002 to 20 Lake Road, Dhaka, Dhaka 1205, Bangladesh."
 uv run python scripts/run_ticket.py TICKET-1 --approve
 uv run python scripts/seed_store.py --plan
 uv run python scripts/seed_store.py

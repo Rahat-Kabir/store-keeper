@@ -6,7 +6,7 @@ from langchain_openrouter import ChatOpenRouter
 from pydantic import BaseModel, Field
 
 from storekeeper.config import load_classifier_settings
-from storekeeper.domain import Intent, RequestedAction, Task
+from storekeeper.domain import Intent, RequestedAction, ShippingAddress, Task
 
 # The policy gate consumes requested_action, but its value follows mechanically
 # from the intent, so code derives it here. The model is never asked to pick an
@@ -38,9 +38,32 @@ Rules:
 - Copy the order reference exactly as the customer wrote it, keeping the
   leading #. Use null when the request names no specific order.
 - Never invent an order reference that is not in the message.
+- For address_change, extract the new shipping address into its structured
+  fields. Use null for every field the customer did not explicitly provide;
+  never infer or copy missing address details.
+- For every other intent, new_shipping_address must be null.
 - Confidence is your certainty in the chosen intent, from 0.0 to 1.0. Use a
   low value when the message is ambiguous.
 """
+
+
+class ClassifiedShippingAddress(BaseModel):
+    """Shipping-address fields extracted only from the customer's message."""
+
+    first_name: str | None = Field(description="Recipient first name, or null if omitted.")
+    last_name: str | None = Field(description="Recipient last name, or null if omitted.")
+    company: str | None = Field(description="Company name, or null if omitted.")
+    address1: str | None = Field(description="Street address, or null if omitted.")
+    address2: str | None = Field(
+        description="Apartment, suite, or unit, or null if omitted."
+    )
+    city: str | None = Field(description="City, or null if omitted.")
+    province: str | None = Field(
+        description="State, province, or region, or null if omitted."
+    )
+    zip: str | None = Field(description="ZIP or postal code, or null if omitted.")
+    country: str | None = Field(description="Country, or null if omitted.")
+    phone: str | None = Field(description="Recipient phone number, or null if omitted.")
 
 
 class ClassifiedTask(BaseModel):
@@ -53,6 +76,12 @@ class ClassifiedTask(BaseModel):
         description=(
             "The order number exactly as the customer wrote it, for example "
             "'#1036'. Null when the request names no specific order."
+        )
+    )
+    new_shipping_address: ClassifiedShippingAddress | None = Field(
+        description=(
+            "The requested new address for address_change, containing only details "
+            "the customer supplied. Null for every other intent."
         )
     )
     confidence: float = Field(
@@ -76,11 +105,17 @@ class TicketClassification(BaseModel):
 def convert_classification_to_tasks(classification: TicketClassification) -> list[Task]:
     domain_tasks: list[Task] = []
     for classified_task in classification.tasks:
+        new_shipping_address: ShippingAddress | None = None
+        if classified_task.new_shipping_address is not None:
+            new_shipping_address = ShippingAddress(
+                **classified_task.new_shipping_address.model_dump()
+            )
         domain_tasks.append(
             Task(
                 intent=classified_task.intent,
                 order_reference=classified_task.order_reference,
                 requested_action=INTENT_TO_REQUESTED_ACTION[classified_task.intent],
+                new_shipping_address=new_shipping_address,
                 confidence=classified_task.confidence,
             )
         )

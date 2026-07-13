@@ -25,7 +25,13 @@ from storekeeper.shopify.operations import (
     OrderNotFoundError,
     lookup_order,
 )
-from storekeeper.shopify.writes import cancel_order, issue_full_refund
+from storekeeper.shopify.writes import (
+    build_updated_shipping_address,
+    cancel_order,
+    issue_full_refund,
+    requested_shipping_address_is_complete,
+    update_shipping_address,
+)
 
 REPLY_DRAFT_SYSTEM_PROMPT = """\
 You draft replies to customer support tickets for a Shopify store.
@@ -94,11 +100,11 @@ def route_after_classify(
     # "other" tickets have no automated path; a human reads them.
     if single_task["requested_action"] is None:
         return "escalate_ticket"
-    # The classifier does not extract the new address yet (slice 5c), so a
-    # human performs address changes.
-    if single_task["intent"] == "address_change":
-        return "escalate_ticket"
     if not single_task["order_reference"]:
+        return "escalate_ticket"
+    if single_task["intent"] == "address_change" and not requested_shipping_address_is_complete(
+        single_task["new_shipping_address"]
+    ):
         return "escalate_ticket"
     return "run_task_pipeline"
 
@@ -118,9 +124,14 @@ def describe_escalation_reason(tasks: list[Task]) -> str:
     single_task = tasks[0]
     if single_task["requested_action"] is None:
         return f"Intent '{single_task['intent']}' has no automated handling yet."
+    if not single_task["order_reference"]:
+        return "The request names no order."
     if single_task["intent"] == "address_change":
-        return "Address changes are not automated yet; update the address by hand."
-    return "The request names no order."
+        return (
+            "The request needs a complete new shipping address: street, city, "
+            "state or province, postal code, and country."
+        )
+    return "The request cannot be automated."
 
 
 def make_answer_policy_question_node(answer_model: BaseChatModel) -> Callable:
@@ -246,19 +257,28 @@ def await_approval_node(state: TaskState) -> Command[Literal["execute_action", "
     assert shopify_order is not None and gate_verdict is not None
     order_facts = shopify_order["facts"]
     # The payload must be JSON-serializable, so the Decimal amount becomes text.
-    decision = interrupt(
-        {
-            "question": "Approve this action?",
-            "action": state["task"]["requested_action"],
-            "order": shopify_order["name"],
-            # What the customer actually wrote, so the approver can audit the
-            # request-to-order binding, not just the selected order.
-            "requested_reference": state["task"]["order_reference"],
-            "amount": f"{order_facts['total_amount']} {order_facts['currency_code']}",
-            "gate_rule": gate_verdict["rule"],
-            "flags": gate_verdict["flags"],
-        }
-    )
+    approval_payload = {
+        "question": "Approve this action?",
+        "action": state["task"]["requested_action"],
+        "order": shopify_order["name"],
+        # What the customer actually wrote, so the approver can audit the
+        # request-to-order binding, not just the selected order.
+        "requested_reference": state["task"]["order_reference"],
+        "amount": f"{order_facts['total_amount']} {order_facts['currency_code']}",
+        "gate_rule": gate_verdict["rule"],
+        "flags": gate_verdict["flags"],
+        "current_shipping_address": None,
+        "new_shipping_address": None,
+    }
+    if state["task"]["requested_action"] == "update_shipping_address":
+        requested_shipping_address = state["task"]["new_shipping_address"]
+        assert requested_shipping_address is not None
+        approval_payload["current_shipping_address"] = shopify_order["shipping_address"]
+        approval_payload["new_shipping_address"] = build_updated_shipping_address(
+            shopify_order["shipping_address"], requested_shipping_address
+        )
+
+    decision = interrupt(approval_payload)
     if decision == "approve":
         return Command(goto="execute_action")
     return Command(goto="record_human_rejection")
@@ -275,9 +295,18 @@ def make_execute_action_node(shopify_client: ShopifyClient | None) -> Callable:
             action_result = cancel_order(shopify_order_id, client=shopify_client)
         elif requested_action == "issue_refund":
             action_result = issue_full_refund(shopify_order_id, client=shopify_client)
+        elif requested_action == "update_shipping_address":
+            requested_shipping_address = state["task"]["new_shipping_address"]
+            assert requested_shipping_address is not None
+            updated_shipping_address = build_updated_shipping_address(
+                shopify_order["shipping_address"], requested_shipping_address
+            )
+            action_result = update_shipping_address(
+                shopify_order_id,
+                updated_shipping_address,
+                client=shopify_client,
+            )
         else:
-            # Address changes escalate at classification; reaching here means
-            # the routing and this node disagree about what is executable.
             raise ValueError(f"No write operation wired for action: {requested_action}")
         return {"task_result": build_task_result(state, outcome="executed", action_result=action_result)}
 

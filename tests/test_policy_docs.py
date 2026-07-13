@@ -15,6 +15,7 @@ def make_task(intent: Intent = "refund_request") -> Task:
         "intent": intent,
         "order_reference": "#1036",
         "requested_action": None,
+        "new_shipping_address": None,
         "confidence": 0.9,
     }
 

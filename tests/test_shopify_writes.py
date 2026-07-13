@@ -1,6 +1,13 @@
 import unittest
 
-from storekeeper.shopify.writes import ShopifyWriteError, cancel_order, issue_full_refund
+from storekeeper.shopify.writes import (
+    ShopifyWriteError,
+    build_updated_shipping_address,
+    cancel_order,
+    issue_full_refund,
+    requested_shipping_address_is_complete,
+    update_shipping_address,
+)
 
 
 class FakeWriteClient:
@@ -64,6 +71,45 @@ def make_refund_success_response() -> dict:
                 "id": "gid://shopify/Refund/5",
                 "totalRefundedSet": {"shopMoney": {"amount": "42.00", "currencyCode": "USD"}},
             },
+            "userErrors": [],
+        }
+    }
+
+
+def make_current_shipping_address() -> dict:
+    return {
+        "first_name": "Rahat",
+        "last_name": "Kabir",
+        "company": "Storekeeper Demo",
+        "address1": "10 Old Road",
+        "address2": "Unit 2",
+        "city": "Austin",
+        "province": "Texas",
+        "zip": "78701",
+        "country": "United States",
+        "phone": "+1 555 0100",
+    }
+
+
+def make_requested_shipping_address() -> dict:
+    return {
+        "first_name": None,
+        "last_name": None,
+        "company": None,
+        "address1": " 20 Lake Road ",
+        "address2": None,
+        "city": " Dhaka ",
+        "province": "Dhaka",
+        "zip": "1205",
+        "country": "Bangladesh",
+        "phone": None,
+    }
+
+
+def make_order_update_success_response() -> dict:
+    return {
+        "orderUpdate": {
+            "order": {"id": "gid://shopify/Order/123"},
             "userErrors": [],
         }
     }
@@ -172,6 +218,95 @@ class IssueFullRefundTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ShopifyWriteError, "Cannot refund"):
             issue_full_refund("gid://shopify/Order/123", client=fake_client)
+
+
+class UpdateShippingAddressTests(unittest.TestCase):
+    def test_complete_address_requires_every_location_field(self) -> None:
+        requested_shipping_address = make_requested_shipping_address()
+        self.assertTrue(requested_shipping_address_is_complete(requested_shipping_address))
+
+        requested_shipping_address["zip"] = "   "
+        self.assertFalse(requested_shipping_address_is_complete(requested_shipping_address))
+
+    def test_build_updated_address_preserves_recipient_details(self) -> None:
+        updated_shipping_address = build_updated_shipping_address(
+            make_current_shipping_address(),
+            make_requested_shipping_address(),
+        )
+
+        self.assertEqual(updated_shipping_address["first_name"], "Rahat")
+        self.assertEqual(updated_shipping_address["last_name"], "Kabir")
+        self.assertEqual(updated_shipping_address["phone"], "+1 555 0100")
+        self.assertEqual(updated_shipping_address["address1"], "20 Lake Road")
+        self.assertIsNone(updated_shipping_address["address2"])
+        self.assertEqual(updated_shipping_address["city"], "Dhaka")
+
+    def test_order_update_sends_the_complete_shipping_address(self) -> None:
+        fake_client = FakeWriteClient([make_order_update_success_response()])
+        updated_shipping_address = build_updated_shipping_address(
+            make_current_shipping_address(),
+            make_requested_shipping_address(),
+        )
+
+        action_result = update_shipping_address(
+            "gid://shopify/Order/123",
+            updated_shipping_address,
+            client=fake_client,
+        )
+
+        _, sent_variables = fake_client.calls[0]
+        assert sent_variables is not None
+        self.assertEqual(sent_variables["input"]["id"], "gid://shopify/Order/123")
+        self.assertEqual(
+            sent_variables["input"]["shippingAddress"]["firstName"], "Rahat"
+        )
+        self.assertEqual(
+            sent_variables["input"]["shippingAddress"]["address1"], "20 Lake Road"
+        )
+        self.assertEqual(
+            sent_variables["input"]["shippingAddress"]["country"], "Bangladesh"
+        )
+        self.assertEqual(action_result["action"], "update_shipping_address")
+        self.assertIn("20 Lake Road", action_result["summary"])
+
+    def test_incomplete_address_is_rejected_before_shopify(self) -> None:
+        fake_client = FakeWriteClient([])
+        incomplete_shipping_address = make_requested_shipping_address()
+        incomplete_shipping_address["country"] = None
+
+        with self.assertRaisesRegex(ValueError, "incomplete"):
+            update_shipping_address(
+                "gid://shopify/Order/123",
+                incomplete_shipping_address,
+                client=fake_client,
+            )
+
+        self.assertEqual(fake_client.calls, [])
+
+    def test_order_update_user_errors_raise(self) -> None:
+        fake_client = FakeWriteClient(
+            [
+                {
+                    "orderUpdate": {
+                        "order": None,
+                        "userErrors": [
+                            {"field": ["input", "shippingAddress"], "message": "Invalid address"}
+                        ],
+                    }
+                }
+            ]
+        )
+        updated_shipping_address = build_updated_shipping_address(
+            make_current_shipping_address(),
+            make_requested_shipping_address(),
+        )
+
+        with self.assertRaisesRegex(ShopifyWriteError, "Invalid address"):
+            update_shipping_address(
+                "gid://shopify/Order/123",
+                updated_shipping_address,
+                client=fake_client,
+            )
 
 
 if __name__ == "__main__":

@@ -63,10 +63,11 @@ covering normal, fulfilled, old, and high-value policy cases.
 
 - Classifies one or more requests from a customer ticket into typed tasks.
 - Looks up real orders through the Shopify GraphQL Admin API.
-- Applies deterministic cancellation and refund policy rules.
-- Requires human approval before ticket-pipeline cancellations and refunds.
+- Applies deterministic cancellation, refund, and address-change policy rules.
+- Requires human approval before every ticket-pipeline order write.
 - Persists pending approvals in SQLite so they survive process restarts.
-- Executes approved cancellations and full refunds on Shopify.
+- Executes approved cancellations, full refunds, and shipping-address changes
+  on Shopify.
 - Answers policy questions from the store's markdown policy documents.
 - Keeps only citations that refer to policy documents actually provided.
 - Drafts a final customer reply from the structured task results.
@@ -135,6 +136,7 @@ Use a unique ticket ID for each new ticket:
 
 ```powershell
 uv run python scripts/run_ticket.py TICKET-1001 "Please cancel order #1001."
+uv run python scripts/run_ticket.py TICKET-1002 "Change order #1002 to 20 Lake Road, Dhaka, Dhaka 1205, Bangladesh."
 ```
 
 If the action passes the policy gate, the graph pauses and prints the pending
@@ -146,9 +148,9 @@ uv run python scripts/run_ticket.py TICKET-1001 --approve
 uv run python scripts/run_ticket.py TICKET-1001 --reject
 ```
 
-> **Warning:** Approving an eligible cancellation or refund executes a real
+> **Warning:** Approving an eligible cancellation, refund, or address change executes a real
 > write against the connected Shopify store. Review the displayed order,
-> action, amount, policy result, and flags before approving.
+> action, policy result, flags, and any address change before approving.
 
 You can also exercise individual parts of the pipeline:
 
@@ -161,8 +163,8 @@ uv run python scripts/check_order_policy.py '#1001' cancel_order
 
 - The project is CLI-first; a graphical interface is planned but not built.
 - It is currently designed for one operator working with a development store.
-- Cancellation and full refund writes are implemented; shipping-address
-  changes escalate to a human.
+- Address changes require the complete new street, city, state or province,
+  postal code, and country. Incomplete requests escalate to a human.
 - Multi-request tickets currently escalate instead of executing several tasks.
 - OpenRouter-backed commands make paid model calls.
 - LangSmith tracing is optional and can send trace data to an external service

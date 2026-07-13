@@ -6,12 +6,22 @@ from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from storekeeper.classify import ClassifiedTask, TicketClassification
+from storekeeper.classify import (
+    ClassifiedShippingAddress,
+    ClassifiedTask,
+    TicketClassification,
+)
 from storekeeper.domain import Intent
 from storekeeper.graph.build import build_ticket_graph
 from storekeeper.graph.nodes import PolicyAnswer
-from test_classify import FakeClassifierModel
-from test_shopify_writes import make_cancel_success_response
+from test_classify import (
+    FakeClassifierModel,
+    make_complete_classified_shipping_address,
+)
+from test_shopify_writes import (
+    make_cancel_success_response,
+    make_order_update_success_response,
+)
 
 
 class FakeGraphShopifyClient:
@@ -60,10 +70,19 @@ class FakeAnswerModel:
 
 
 def make_classification(
-    intent: Intent = "cancel_order", order_reference: str | None = "#1036"
+    intent: Intent = "cancel_order",
+    order_reference: str | None = "#1036",
+    new_shipping_address: ClassifiedShippingAddress | None = None,
 ) -> TicketClassification:
     return TicketClassification(
-        tasks=[ClassifiedTask(intent=intent, order_reference=order_reference, confidence=0.95)]
+        tasks=[
+            ClassifiedTask(
+                intent=intent,
+                order_reference=order_reference,
+                new_shipping_address=new_shipping_address,
+                confidence=0.95,
+            )
+        ]
     )
 
 
@@ -76,6 +95,18 @@ def make_live_shopify_order(
         "name": "#1036",
         "processedAt": processed_at.isoformat(),
         "displayFulfillmentStatus": fulfillment_status,
+        "shippingAddress": {
+            "firstName": "Rahat",
+            "lastName": "Kabir",
+            "company": None,
+            "address1": "10 Old Road",
+            "address2": "Unit 2",
+            "city": "Austin",
+            "province": "Texas",
+            "zip": "78701",
+            "country": "United States",
+            "phone": "+1 555 0100",
+        },
         "totalPriceSet": {"shopMoney": {"amount": "125.50", "currencyCode": "USD"}},
     }
 
@@ -176,15 +207,94 @@ class TicketGraphTests(unittest.TestCase):
 
         self.assertEqual(fake_shopify_client.write_calls, [])
 
-    def test_address_change_escalates_until_extraction_exists(self) -> None:
+    def test_incomplete_address_change_escalates_without_shopify_lookup(self) -> None:
+        incomplete_shipping_address = make_complete_classified_shipping_address().model_copy(
+            update={"zip": None}
+        )
         ticket_graph, fake_shopify_client, _ = build_test_graph(
-            make_classification(intent="address_change"), []
+            make_classification(
+                intent="address_change",
+                new_shipping_address=incomplete_shipping_address,
+            ),
+            [],
         )
 
         result = ticket_graph.invoke(make_ticket_input(), thread_config("address-1"))
 
         self.assertEqual(result["ticket_outcome"], "escalated_to_human")
-        self.assertIn("Address changes", result["escalation_reason"])
+        self.assertIn("complete new shipping address", result["escalation_reason"])
+        self.assertIsNone(fake_shopify_client.received_variables)
+        self.assertEqual(fake_shopify_client.write_calls, [])
+
+    def test_complete_address_change_pauses_with_current_and_new_addresses(self) -> None:
+        ticket_graph, _, _ = build_test_graph(
+            make_classification(
+                intent="address_change",
+                new_shipping_address=make_complete_classified_shipping_address(),
+            ),
+            [make_live_shopify_order("UNFULFILLED")],
+        )
+
+        result = ticket_graph.invoke(make_ticket_input(), thread_config("address-pause-1"))
+
+        pending_approval = result["__interrupt__"][0].value
+        self.assertEqual(pending_approval["action"], "update_shipping_address")
+        self.assertEqual(pending_approval["gate_rule"], "address_change_unfulfilled")
+        self.assertEqual(
+            pending_approval["current_shipping_address"]["address1"], "10 Old Road"
+        )
+        self.assertEqual(
+            pending_approval["new_shipping_address"]["address1"], "20 Lake Road"
+        )
+        self.assertEqual(pending_approval["new_shipping_address"]["first_name"], "Rahat")
+
+    def test_approved_address_change_executes_order_update(self) -> None:
+        ticket_graph, fake_shopify_client, _ = build_test_graph(
+            make_classification(
+                intent="address_change",
+                new_shipping_address=make_complete_classified_shipping_address(),
+            ),
+            [make_live_shopify_order("UNFULFILLED")],
+            write_responses=[make_order_update_success_response()],
+        )
+        config = thread_config("address-approve-1")
+        ticket_graph.invoke(make_ticket_input(), config)
+
+        result = ticket_graph.invoke(Command(resume="approve"), config)
+
+        final_task_result = result["task_results"][0]
+        self.assertEqual(final_task_result["outcome"], "executed")
+        self.assertEqual(
+            final_task_result["action_result"]["action"], "update_shipping_address"
+        )
+        self.assertEqual(len(fake_shopify_client.write_calls), 1)
+        _, update_variables = fake_shopify_client.write_calls[0]
+        assert update_variables is not None
+        self.assertEqual(update_variables["input"]["id"], "gid://shopify/Order/123")
+        self.assertEqual(
+            update_variables["input"]["shippingAddress"]["address1"], "20 Lake Road"
+        )
+        self.assertEqual(
+            update_variables["input"]["shippingAddress"]["firstName"], "Rahat"
+        )
+
+    def test_fulfilled_order_address_change_is_denied_without_write(self) -> None:
+        ticket_graph, fake_shopify_client, _ = build_test_graph(
+            make_classification(
+                intent="address_change",
+                new_shipping_address=make_complete_classified_shipping_address(),
+            ),
+            [make_live_shopify_order("FULFILLED")],
+        )
+
+        result = ticket_graph.invoke(make_ticket_input(), thread_config("address-denied-1"))
+
+        final_task_result = result["task_results"][0]
+        self.assertEqual(final_task_result["outcome"], "denied_by_policy")
+        self.assertEqual(
+            final_task_result["gate_verdict"]["rule"], "address_change_fulfilled"
+        )
+        self.assertEqual(final_task_result["policy_citations"], ["address-changes.md"])
         self.assertEqual(fake_shopify_client.write_calls, [])
 
     def test_rejection_records_the_human_decision(self) -> None:
@@ -202,8 +312,18 @@ class TicketGraphTests(unittest.TestCase):
     def test_multi_request_ticket_escalates(self) -> None:
         two_request_classification = TicketClassification(
             tasks=[
-                ClassifiedTask(intent="cancel_order", order_reference="#1023", confidence=0.9),
-                ClassifiedTask(intent="policy_question", order_reference=None, confidence=0.8),
+                ClassifiedTask(
+                    intent="cancel_order",
+                    order_reference="#1023",
+                    new_shipping_address=None,
+                    confidence=0.9,
+                ),
+                ClassifiedTask(
+                    intent="policy_question",
+                    order_reference=None,
+                    new_shipping_address=None,
+                    confidence=0.8,
+                ),
             ]
         )
         ticket_graph, _, _ = build_test_graph(two_request_classification, [])

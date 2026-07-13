@@ -14,8 +14,8 @@ Feature log: what's built, what's next. Details live in
 - [x] 6. Policy corpus + policy-question answering with verified citations
 - [x] Hardening: strict order-reference binding
 - [x] 6b. RAG behind `find_policy_context` (local Chroma, chunk by heading)
-- [ ] 5c. Address extraction in the classifier + `orderUpdate` write ← next
-- [ ] 7. Polish: LangSmith walkthrough, README GIF
+- [x] 5c. Address extraction in the classifier + `orderUpdate` write
+- [ ] 7. Polish: LangSmith walkthrough, README GIF ← next
 - [ ] 8. Operator console: FastAPI API wrapping the graph (curl-proven first),
       then a Vite + React single-page UI with full CLI feature parity
 - [ ] Backlog: seed-script argparse, completed-ticket-id reuse guard, scope trim
@@ -56,7 +56,7 @@ are LLM-drafted from structured results.
 `orderCancel` and `suggestedRefund`-driven `refundCreate` (order-derived
 idempotency key) run after approval; a rejected approval sends zero write
 calls. Verified live: real cancellation and a real 42 USD refund.
-Address changes escalate to a human until 5c.
+Address changes still escalated here; slice 5c later automated them.
 
 ### 6 — Policy answers (2026-07-13)
 
@@ -69,6 +69,12 @@ verified in code; denied requests cite the relevant policy in their reply.
 Policy questions retrieve the top three heading chunks from a local Chroma
 index using local MiniLM embeddings. Index and search CLIs prove retrieval
 before graph use; action-denial citations still read deterministic whole docs.
+
+### 5c — Shipping-address changes (2026-07-13)
+
+The classifier extracts the requested address without inventing missing fields;
+incomplete requests escalate. Eligible changes show current and final addresses
+for human approval, then execute Shopify `orderUpdate`.
 
 ### Hardening — order binding (2026-07-13)
 

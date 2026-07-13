@@ -10,8 +10,8 @@ you.
 ## How to request a change
 
 Contact support with your order number and the complete new address (street,
-city, state, ZIP). A member of our team applies the change by hand and
-confirms it back to you.
+city, state, ZIP, country). After a team member reviews and approves the
+request, we apply the change and confirm it back to you.
 
 ## Refused or undeliverable packages
 

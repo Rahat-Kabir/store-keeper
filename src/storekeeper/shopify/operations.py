@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from decimal import Decimal
 
-from storekeeper.domain import OrderFacts, ShopifyOrder
+from storekeeper.domain import OrderFacts, ShippingAddress, ShopifyOrder
 from storekeeper.shopify.client import ShopifyClient
 
 ORDER_REFERENCE_PATTERN = re.compile(r"^#?\d{1,10}$")
@@ -17,6 +17,18 @@ query LookupOrder($searchQuery: String!) {
       name
       processedAt
       displayFulfillmentStatus
+      shippingAddress {
+        firstName
+        lastName
+        company
+        address1
+        address2
+        city
+        province
+        zip
+        country
+        phone
+      }
       totalPriceSet {
         shopMoney {
           amount
@@ -86,6 +98,7 @@ def lookup_order(
         "id": order["id"],
         "name": order["name"],
         "facts": normalize_order_facts(order),
+        "shipping_address": normalize_shipping_address(order.get("shippingAddress")),
     }
 
 
@@ -98,4 +111,21 @@ def normalize_order_facts(order: dict) -> OrderFacts:
         "fulfilled": order["displayFulfillmentStatus"] != "UNFULFILLED",
         "total_amount": Decimal(shop_money["amount"]),
         "currency_code": shop_money["currencyCode"],
+    }
+
+
+def normalize_shipping_address(shipping_address: dict | None) -> ShippingAddress | None:
+    if shipping_address is None:
+        return None
+    return {
+        "first_name": shipping_address.get("firstName"),
+        "last_name": shipping_address.get("lastName"),
+        "company": shipping_address.get("company"),
+        "address1": shipping_address.get("address1"),
+        "address2": shipping_address.get("address2"),
+        "city": shipping_address.get("city"),
+        "province": shipping_address.get("province"),
+        "zip": shipping_address.get("zip"),
+        "country": shipping_address.get("country"),
+        "phone": shipping_address.get("phone"),
     }

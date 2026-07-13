@@ -2,10 +2,11 @@
 
 ## Domain contracts
 
-`src/storekeeper/domain.py` owns shared `Task`, `OrderFacts`, `GateVerdict`, and
-`TaskResult` types. `OrderFacts` is a small normalized view of a Shopify order.
-`Task.order_reference` holds the order name as the customer wrote it (e.g.
-`#1036`), not the Shopify GraphQL id.
+`src/storekeeper/domain.py` owns shared `Task`, `ShippingAddress`, `OrderFacts`,
+`GateVerdict`, and `TaskResult` types. `OrderFacts` is a small normalized view
+of a Shopify order. `Task.order_reference` holds the order name as the customer
+wrote it (e.g. `#1036`), not the Shopify GraphQL id. Address-change tasks carry
+the customer-provided address fields in `Task.new_shipping_address`.
 
 ## Ticket classifier
 
@@ -19,6 +20,10 @@ comes from the `OPENROUTER_MODEL` env variable.
 - The model picks only the intent. `requested_action` is derived in code from
   a fixed intent→action mapping, so the model cannot emit an inconsistent
   intent/action pair.
+- For address changes, the model extracts structured address fields but must
+  leave omitted fields null. Automation requires street, city, state or
+  province, postal code, and country; incomplete requests escalate instead of
+  guessing.
 - Output is a list of tasks even in v1: multi-request tickets classify into
   one task per request, in ticket order. This is where the v2 planner plugs in.
 - Tests inject a fake model; the unit suite makes no network calls.
@@ -55,8 +60,8 @@ comes from the `OPENROUTER_MODEL` env variable.
 
 - **Ticket graph** (`TicketState`): `classify` → route → `run_task_pipeline`,
   `answer_policy_question`, or `escalate_ticket` → `draft_reply`. Escalation
-  paths: multiple requests, intent `other`, address changes (until 5c), or no
-  order reference.
+  paths: multiple requests, intent `other`, no order reference, or an incomplete
+  address-change request.
 - **Task pipeline subgraph** (`TaskState`): `lookup_order` → `policy_gate` →
   route → `await_approval` (denied requests skip straight to a result). The
   subgraph is invoked by a side-effect-free wrapper node — the v2 planner will
@@ -75,9 +80,12 @@ Rules of the graph:
   (async `orderCancel`; refunds the original payment and restocks) and
   `issue_full_refund` (`order.suggestedRefund` decides which payment
   transactions to reverse; orders without captured payments get their items
-  marked refunded). `refundCreate` carries an order-derived `@idempotent`
-  key, so a re-executed node cannot refund twice. Address changes escalate
-  at classification until the classifier extracts the new address (5c).
+  marked refunded), plus `update_shipping_address` (`orderUpdate`). Address
+  updates preserve the current recipient name, company, and phone when the
+  customer omits them, while replacing the delivery-location fields. The
+  approval payload shows both current and final addresses. `refundCreate`
+  carries an order-derived `@idempotent` key, so a re-executed node cannot
+  refund twice.
   Note: `orderCancel` returning a job id means Shopify *accepted* the
   cancellation; completion happens asynchronously on Shopify's side.
 
@@ -90,8 +98,8 @@ Rules of the graph:
   prompts, ticket text, order data, and drafted replies.
 - **`var/checkpoints.sqlite`** retains every ticket's state — text, order
   facts, decisions, replies — locally and indefinitely. Keep it private.
-- **Shopify** receives only order lookups and the two approved write
-  mutations; ticket text itself is never sent to Shopify.
+- **Shopify** receives only order lookups and approved write mutations; ticket
+  text itself is never sent to Shopify.
 - A missing order becomes outcome `failed` and an apologetic reply draft.
 - `draft_reply` is an LLM call over the structured `task_results` list;
   promoting it to the v2 composer is a prompt change.

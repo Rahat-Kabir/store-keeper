@@ -4,6 +4,7 @@ These run only after the policy gate passed AND a human approved the action.
 Nothing in this module decides whether a write should happen.
 """
 
+from storekeeper.domain import ShippingAddress
 from storekeeper.shopify.client import ShopifyClient
 
 ORDER_CANCEL_MUTATION = """
@@ -69,6 +70,30 @@ mutation StorekeeperRefundCreate($input: RefundInput!, $idempotencyKey: String!)
   }
 }
 """
+
+ORDER_UPDATE_MUTATION = """
+mutation StorekeeperOrderUpdate($input: OrderInput!) {
+  orderUpdate(input: $input) {
+    order { id }
+    userErrors { field message }
+  }
+}
+"""
+
+REQUIRED_SHIPPING_ADDRESS_FIELDS = ("address1", "city", "province", "zip", "country")
+RECIPIENT_IDENTITY_FIELDS = ("first_name", "last_name", "company", "phone")
+SHOPIFY_ADDRESS_FIELD_NAMES = {
+    "first_name": "firstName",
+    "last_name": "lastName",
+    "company": "company",
+    "address1": "address1",
+    "address2": "address2",
+    "city": "city",
+    "province": "province",
+    "zip": "zip",
+    "country": "country",
+    "phone": "phone",
+}
 
 
 class ShopifyWriteError(RuntimeError):
@@ -163,6 +188,95 @@ def issue_full_refund(shopify_order_id: str, client: ShopifyClient | None = None
         "currency": refunded_money["currencyCode"],
         "summary": summary,
     }
+
+
+def requested_shipping_address_is_complete(
+    requested_shipping_address: ShippingAddress | None,
+) -> bool:
+    if requested_shipping_address is None:
+        return False
+    return all(
+        _clean_address_value(requested_shipping_address[field_name]) is not None
+        for field_name in REQUIRED_SHIPPING_ADDRESS_FIELDS
+    )
+
+
+def build_updated_shipping_address(
+    current_shipping_address: ShippingAddress | None,
+    requested_shipping_address: ShippingAddress,
+) -> ShippingAddress:
+    if not requested_shipping_address_is_complete(requested_shipping_address):
+        raise ValueError(
+            "A shipping-address update requires street, city, state/province, "
+            "postal code, and country."
+        )
+
+    updated_shipping_address = ShippingAddress(
+        first_name=None,
+        last_name=None,
+        company=None,
+        address1=_clean_address_value(requested_shipping_address["address1"]),
+        address2=_clean_address_value(requested_shipping_address["address2"]),
+        city=_clean_address_value(requested_shipping_address["city"]),
+        province=_clean_address_value(requested_shipping_address["province"]),
+        zip=_clean_address_value(requested_shipping_address["zip"]),
+        country=_clean_address_value(requested_shipping_address["country"]),
+        phone=None,
+    )
+    for field_name in RECIPIENT_IDENTITY_FIELDS:
+        requested_value = _clean_address_value(requested_shipping_address[field_name])
+        current_value = (
+            _clean_address_value(current_shipping_address[field_name])
+            if current_shipping_address is not None
+            else None
+        )
+        updated_shipping_address[field_name] = requested_value or current_value
+    return updated_shipping_address
+
+
+def update_shipping_address(
+    shopify_order_id: str,
+    updated_shipping_address: ShippingAddress,
+    client: ShopifyClient | None = None,
+) -> dict:
+    if not requested_shipping_address_is_complete(updated_shipping_address):
+        raise ValueError("Cannot send an incomplete shipping address to Shopify.")
+
+    shopify_shipping_address = {
+        shopify_field_name: updated_shipping_address[domain_field_name]
+        for domain_field_name, shopify_field_name in SHOPIFY_ADDRESS_FIELD_NAMES.items()
+    }
+    shopify_client = client if client is not None else ShopifyClient()
+    data = shopify_client.graphql(
+        ORDER_UPDATE_MUTATION,
+        {
+            "input": {
+                "id": shopify_order_id,
+                "shippingAddress": shopify_shipping_address,
+            }
+        },
+    )
+    payload = data["orderUpdate"]
+    if payload["userErrors"]:
+        raise ShopifyWriteError(f"orderUpdate failed: {payload['userErrors']}")
+
+    return {
+        "action": "update_shipping_address",
+        "order_id": payload["order"]["id"],
+        "shipping_address": updated_shipping_address,
+        "summary": (
+            f"Updated the shipping address to {updated_shipping_address['address1']}, "
+            f"{updated_shipping_address['city']}, {updated_shipping_address['province']} "
+            f"{updated_shipping_address['zip']}, {updated_shipping_address['country']}."
+        ),
+    }
+
+
+def _clean_address_value(address_value: str | None) -> str | None:
+    if address_value is None:
+        return None
+    cleaned_address_value = address_value.strip()
+    return cleaned_address_value or None
 
 
 def _create_refund(shopify_client: ShopifyClient, refund_input: dict) -> dict:

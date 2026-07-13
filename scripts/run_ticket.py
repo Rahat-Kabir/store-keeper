@@ -1,6 +1,7 @@
 """Run one support ticket through the guarded pipeline, or resume a paused one."""
 
 import argparse
+import json
 from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -57,6 +58,15 @@ def print_result(ticket_id: str, result: dict) -> None:
         print(f"  Customer wrote: \"{pending_approval['requested_reference']}\"")
         print(f"  Amount: {pending_approval['amount']}")
         print(f"  Gate:   passed ({pending_approval['gate_rule']})")
+        if pending_approval["new_shipping_address"] is not None:
+            print(
+                "  Current address: "
+                f"{json.dumps(pending_approval['current_shipping_address'], ensure_ascii=False)}"
+            )
+            print(
+                "  New address:     "
+                f"{json.dumps(pending_approval['new_shipping_address'], ensure_ascii=False)}"
+            )
         if pending_approval["flags"]:
             print(f"  Flags:  {', '.join(pending_approval['flags'])}")
         print()

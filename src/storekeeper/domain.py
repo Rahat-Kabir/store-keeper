@@ -33,7 +33,21 @@ class Task(TypedDict):
     # Shopify order *name* — not the Shopify GraphQL id (ShopifyOrder["id"]).
     order_reference: str | None
     requested_action: RequestedAction | None
+    new_shipping_address: "ShippingAddress | None"
     confidence: float
+
+
+class ShippingAddress(TypedDict):
+    first_name: str | None
+    last_name: str | None
+    company: str | None
+    address1: str | None
+    address2: str | None
+    city: str | None
+    province: str | None
+    zip: str | None
+    country: str | None
+    phone: str | None
 
 
 class OrderFacts(TypedDict):
@@ -49,6 +63,7 @@ class ShopifyOrder(TypedDict):
     id: str
     name: str
     facts: OrderFacts
+    shipping_address: ShippingAddress | None
 
 
 class GateVerdict(TypedDict):

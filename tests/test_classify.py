@@ -3,6 +3,7 @@ import unittest
 from pydantic import ValidationError
 
 from storekeeper.classify import (
+    ClassifiedShippingAddress,
     ClassifiedTask,
     TicketClassification,
     classify_ticket,
@@ -28,12 +29,32 @@ class FakeClassifierModel:
         return self.classification
 
 
-def make_classification(intent: Intent = "cancel_order", order_reference: str | None = "#1036") -> TicketClassification:
+def make_complete_classified_shipping_address() -> ClassifiedShippingAddress:
+    return ClassifiedShippingAddress(
+        first_name=None,
+        last_name=None,
+        company=None,
+        address1="20 Lake Road",
+        address2="Apartment 4B",
+        city="Dhaka",
+        province="Dhaka",
+        zip="1205",
+        country="Bangladesh",
+        phone=None,
+    )
+
+
+def make_classification(
+    intent: Intent = "cancel_order",
+    order_reference: str | None = "#1036",
+    new_shipping_address: ClassifiedShippingAddress | None = None,
+) -> TicketClassification:
     return TicketClassification(
         tasks=[
             ClassifiedTask(
                 intent=intent,
                 order_reference=order_reference,
+                new_shipping_address=new_shipping_address,
                 confidence=0.95,
             )
         ]
@@ -54,6 +75,7 @@ class ClassifyTicketTests(unittest.TestCase):
         self.assertEqual(tasks[0]["intent"], "cancel_order")
         self.assertEqual(tasks[0]["order_reference"], "#1036")
         self.assertEqual(tasks[0]["requested_action"], "cancel_order")
+        self.assertIsNone(tasks[0]["new_shipping_address"])
         self.assertEqual(tasks[0]["confidence"], 0.95)
 
     def test_ticket_text_reaches_the_model(self) -> None:
@@ -96,8 +118,18 @@ class ConvertClassificationTests(unittest.TestCase):
     def test_multiple_tasks_keep_their_order(self) -> None:
         classification = TicketClassification(
             tasks=[
-                ClassifiedTask(intent="cancel_order", order_reference="#1023", confidence=0.9),
-                ClassifiedTask(intent="policy_question", order_reference=None, confidence=0.8),
+                ClassifiedTask(
+                    intent="cancel_order",
+                    order_reference="#1023",
+                    new_shipping_address=None,
+                    confidence=0.9,
+                ),
+                ClassifiedTask(
+                    intent="policy_question",
+                    order_reference=None,
+                    new_shipping_address=None,
+                    confidence=0.8,
+                ),
             ]
         )
 
@@ -107,18 +139,48 @@ class ConvertClassificationTests(unittest.TestCase):
         self.assertEqual(tasks[0]["intent"], "cancel_order")
         self.assertEqual(tasks[1]["intent"], "policy_question")
 
+    def test_address_change_keeps_the_structured_new_address(self) -> None:
+        tasks = convert_classification_to_tasks(
+            make_classification(
+                intent="address_change",
+                new_shipping_address=make_complete_classified_shipping_address(),
+            )
+        )
+
+        assert tasks[0]["new_shipping_address"] is not None
+        self.assertEqual(tasks[0]["new_shipping_address"]["address1"], "20 Lake Road")
+        self.assertEqual(tasks[0]["new_shipping_address"]["country"], "Bangladesh")
+
 
 class ClassificationSchemaTests(unittest.TestCase):
     def test_unknown_intent_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             TicketClassification.model_validate(
-                {"tasks": [{"intent": "delete_store", "order_reference": None, "confidence": 0.9}]}
+                {
+                    "tasks": [
+                        {
+                            "intent": "delete_store",
+                            "order_reference": None,
+                            "new_shipping_address": None,
+                            "confidence": 0.9,
+                        }
+                    ]
+                }
             )
 
     def test_confidence_outside_range_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             TicketClassification.model_validate(
-                {"tasks": [{"intent": "cancel_order", "order_reference": "#1036", "confidence": 1.5}]}
+                {
+                    "tasks": [
+                        {
+                            "intent": "cancel_order",
+                            "order_reference": "#1036",
+                            "new_shipping_address": None,
+                            "confidence": 1.5,
+                        }
+                    ]
+                }
             )
 
 
