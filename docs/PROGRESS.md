@@ -18,8 +18,9 @@ Feature log: what's built, what's next. Details live in
 - [x] 7a. Polish: LangSmith trace walkthrough (docs + README teaser image)
 - [x] 8.0. Ticket registry + completed-id reuse guard
 - [x] 8.1. FastAPI wrapper: create/list/detail/decision endpoints
+- [x] 8.2. React console: ticket list, create form, and result detail
 - [ ] 8. Operator console: FastAPI API wrapping the graph (curl-proven first),
-      then a Vite + React single-page UI with full CLI feature parity ← 8.2 next
+      then a Vite + React single-page UI with full CLI feature parity ← 8.3 next
 - [ ] 7b. Polish: README GIF/screenshots of the operator console (after 8)
 - [ ] Backlog: seed-script argparse, scope trim
 
@@ -97,6 +98,13 @@ refuse reused registry ids or existing graph threads; approval resumes are uncha
 The localhost API now creates, lists, reads, and decides tickets through the
 existing graph. Pydantic models expose validated state and the approval payload,
 including the gate reason; stubbed HTTP tests make no Shopify or model calls.
+
+### 8.2 — Read-side operator console (2026-07-14)
+
+A Vite + React + TypeScript SPA now creates tickets, browses registry history,
+and renders outcomes, reply drafts, and verified citations through the FastAPI
+API. Plain fetch and CSS reproduce the operator-console mockup without UI or
+state libraries; approval controls remain for 8.3.
 
 ### Hardening — order binding (2026-07-13)
 

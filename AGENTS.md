@@ -43,6 +43,9 @@ Dangerous store actions are enforced by code and human approval.
 - FastAPI operator API in `api/` exposes ticket create, list, detail, and
   approval decisions under `/api/`. It invokes the graph and registry only;
   it never calls Shopify or an LLM directly.
+- Vite + React + TypeScript operator console in `frontend/` uses plain `fetch`
+  against `/api/`. The development server proxies API calls to FastAPI; the
+  current read-side UI creates, lists, and displays ticket results and drafts.
 - Policy corpus in `policies/` (markdown, one topic per file).
   `policy_docs.find_policy_context()` is the retrieval seam: action intents
   read mapped whole docs, while policy questions retrieve top-three heading
@@ -104,6 +107,9 @@ Dangerous store actions are enforced by code and human approval.
 | `src/storekeeper/tickets.py` | 165 | Ticket registry, id generation, lookup, and checkpoint-derived status. |
 | `src/storekeeper/api/app.py` | 195 | FastAPI lifecycle, graph seam, and ticket endpoints. |
 | `src/storekeeper/api/schemas.py` | 95 | Validated operator API request and response models. |
+| `frontend/src/App.tsx` | 160 | Operator-console shell, selection, refresh, and create flow. |
+| `frontend/src/api.ts` | 40 | Typed fetch calls for ticket create, list, and detail. |
+| `frontend/src/components/TicketDetail.tsx` | 140 | Ticket result, draft, citation, and pending-state display. |
 | `src/storekeeper/graph/state.py` | 30 | Ticket and task state schemas. |
 | `src/storekeeper/graph/nodes.py` | 345 | Graph nodes, routes, approval interrupt, policy answers. |
 | `src/storekeeper/graph/build.py` | 110 | Assembles ticket graph + task subgraph. |
@@ -137,6 +143,11 @@ uv run python scripts/run_ticket.py TICKET-1 "Please cancel order #1001."
 uv run python scripts/run_ticket.py TICKET-2 "Change order #1002 to 20 Lake Road, Dhaka, Dhaka 1205, Bangladesh."
 uv run python scripts/run_ticket.py TICKET-1 --approve
 uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
+cd frontend
+npm install
+npm run dev
+npm run build
+npm run lint
 uv run python scripts/seed_store.py --plan
 uv run python scripts/seed_store.py
 uv run python -m unittest discover -s tests -v

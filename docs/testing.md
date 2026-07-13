@@ -44,3 +44,19 @@ $decisionBody | curl.exe -s -X POST "localhost:8000/api/tickets/$ticketId/decisi
 Creating and resolving tickets makes paid OpenRouter calls. An `approve`
 decision can execute a real Shopify write; use `reject` when verifying the API
 without changing the development store.
+
+For the browser flow, keep FastAPI running on port 8000 and Vite on port 5173.
+In a second PowerShell terminal, run:
+
+```powershell
+cd frontend
+npm run build
+npm run lint
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`, create the policy question `How long is your
+warranty?`, and verify that the new ticket appears first in the list with an
+Answered badge. Its detail view must show a reply draft and the verified
+`warranty.md` citation. The Copy draft button must copy the displayed reply.
+This live flow makes paid OpenRouter calls but performs no Shopify write.

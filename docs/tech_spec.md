@@ -80,6 +80,21 @@ that are not pending return 409; unknown registry ids return 404. Endpoints use
 plain `def` because graph, model, Shopify, and SQLite operations are synchronous.
 The API never calls Shopify, the classifier, or the drafter directly.
 
+## Operator console
+
+`frontend/` is a Vite + React + TypeScript single-page application. In
+development, Vite runs on `127.0.0.1:5173` and proxies `/api` to FastAPI on
+`127.0.0.1:8000`, so no CORS configuration is needed. It uses plain `fetch`
+and mirrors the Pydantic response fields with TypeScript interfaces.
+
+`App.tsx` owns ticket selection, list refresh, and new-ticket mode.
+`TicketList`, `TicketForm`, and `TicketDetail` render the two-column console:
+newest-first history on the left and the selected customer message, outcome,
+reply draft, and verified citations on the right. Detailed outcome badges are
+derived from the selected ticket's `task_results`; unselected list rows use
+the checkpoint-derived summary status. Pending tickets are displayed safely,
+but approval details and decision controls remain for slice 8.3.
+
 ## Ticket graph
 
 `graph/build.py` assembles two LangGraph `StateGraph`s:

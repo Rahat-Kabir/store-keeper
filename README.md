@@ -4,9 +4,9 @@ An open-source AI customer-support agent for Shopify. It uses LLMs to
 understand customer requests and draft replies, while deterministic code and
 human approval control sensitive order actions.
 
-> **Project status:** Early v1 in active development. The current interface is
-> CLI-first, with a UI planned later. It is designed for development stores and
-> is not production-ready yet.
+> **Project status:** Early v1 in active development. The CLI, localhost API,
+> and read-side React operator console are built; browser approval controls are
+> next. It is designed for development stores and is not production-ready yet.
 
 ## Why storekeeper
 
@@ -79,6 +79,7 @@ covering normal, fulfilled, old, and high-value policy cases.
 - Persists pending approvals in SQLite so they survive process restarts.
 - Registers ticket ids separately and refuses accidental reuse of an existing id.
 - Exposes the ticket workflow through a localhost FastAPI operator API.
+- Creates, lists, and reads tickets in a local React operator console.
 - Executes approved cancellations, full refunds, and shipping-address changes
   on Shopify.
 - Answers policy questions from the store's markdown policy documents.
@@ -90,6 +91,7 @@ covering normal, fulfilled, old, and high-value policy cases.
 ### Requirements
 
 - Python 3.11+
+- Node.js 20.19+ on the 20.x line, or Node.js 22.12+
 - [uv](https://docs.astral.sh/uv/)
 - A Shopify development store you own
 - A custom Shopify app configured for client-credentials authentication
@@ -175,16 +177,27 @@ uv run python scripts/classify_ticket.py "Where is my order #1005?"
 uv run python scripts/check_order_policy.py '#1001' cancel_order
 ```
 
-### Run the operator API
+### Run the operator console
 
-The API currently supports curl or another HTTP client; the React console is
-the next slice. Start it on localhost:
+Start FastAPI in the first PowerShell terminal:
 
 ```powershell
 uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
 ```
 
-Create and list tickets:
+Start Vite in a second terminal, then open `http://127.0.0.1:5173`:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+The console can create tickets, browse history, and display outcomes, reply
+drafts, and verified citations. Approval and rejection controls remain on the
+CLI or API until the next UI slice.
+
+You can also create and list tickets directly through the API:
 
 ```powershell
 $ticketBody = @{ticket_text = "How long is your warranty?"} | ConvertTo-Json -Compress
@@ -194,7 +207,7 @@ curl.exe -s localhost:8000/api/tickets
 
 ## Current limitations
 
-- The project is CLI-first; a graphical interface is planned but not built.
+- The React console does not yet expose approval and rejection controls.
 - It is currently designed for one operator working with a development store.
 - Address changes require the complete new street, city, state or province,
   postal code, and country. Incomplete requests escalate to a human.
@@ -219,6 +232,7 @@ src/storekeeper/
 policies/           # Store policy documents
 scripts/            # CLI workflows and development-store seeding
 tests/              # Offline unit tests
+frontend/           # Vite + React operator console
 ```
 
 ## Documentation
