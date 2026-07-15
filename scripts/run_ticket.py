@@ -20,11 +20,19 @@ def main() -> None:
     parser.add_argument("ticket_id", help="Stable id for this ticket; also the handle used to resume it")
     parser.add_argument("ticket_text", nargs="?", help="The customer's message, quoted (omit when resuming)")
     decision_group = parser.add_mutually_exclusive_group()
-    decision_group.add_argument("--approve", action="store_true", help="Approve the pending action")
-    decision_group.add_argument("--reject", action="store_true", help="Reject the pending action")
+    decision_group.add_argument(
+        "--approve",
+        metavar="INTERRUPT_ID",
+        help="Approve one pending action by interrupt id",
+    )
+    decision_group.add_argument(
+        "--reject",
+        metavar="INTERRUPT_ID",
+        help="Reject one pending action by interrupt id",
+    )
     arguments = parser.parse_args()
 
-    resuming = arguments.approve or arguments.reject
+    resuming = arguments.approve is not None or arguments.reject is not None
     if resuming and arguments.ticket_text:
         parser.error("Pass either ticket text or a decision flag, not both.")
     if not resuming and not arguments.ticket_text:
@@ -36,8 +44,30 @@ def main() -> None:
     with SqliteSaver.from_conn_string(str(CHECKPOINT_DATABASE_PATH)) as checkpointer:
         ticket_graph = build_ticket_graph(checkpointer=checkpointer)
         if resuming:
-            decision = "approve" if arguments.approve else "reject"
-            result = ticket_graph.invoke(Command(resume=decision), config)
+            interrupt_id = arguments.approve or arguments.reject
+            assert interrupt_id is not None
+            decision = "approve" if arguments.approve is not None else "reject"
+            state_snapshot = ticket_graph.get_state(config)
+            completed_task_ids = {
+                task_result.get("task_id")
+                or task_result["task"].get("task_id")
+                or "task-1"
+                for task_result in state_snapshot.values.get("task_results", [])
+            }
+            pending_interrupt_ids = {
+                pending_interrupt.id
+                for pending_interrupt in state_snapshot.interrupts
+                if pending_interrupt.value.get("task_id") not in completed_task_ids
+            }
+            if interrupt_id not in pending_interrupt_ids:
+                parser.error(
+                    f"Interrupt id {interrupt_id!r} is not pending on "
+                    f"ticket {arguments.ticket_id!r}."
+                )
+            result = ticket_graph.invoke(
+                Command(resume={interrupt_id: decision}),
+                config,
+            )
         else:
             assert arguments.ticket_text is not None
             if get_ticket_status(arguments.ticket_id, ticket_graph) != "not_found":
@@ -57,6 +87,7 @@ def main() -> None:
                     "reply_draft": None,
                     "ticket_outcome": None,
                     "escalation_reason": None,
+                    "plan_conflict_reason": None,
                 },
                 config,
             )
@@ -65,40 +96,68 @@ def main() -> None:
 
 def print_result(ticket_id: str, result: dict) -> None:
     if "__interrupt__" in result:
-        pending_approval = result["__interrupt__"][0].value
-        print(f"== AWAITING APPROVAL -- ticket {ticket_id} ==")
-        print(f"  Action: {pending_approval['action']} on order {pending_approval['order']}")
-        print(f"  Customer wrote: \"{pending_approval['requested_reference']}\"")
-        print(f"  Amount: {pending_approval['amount']}")
-        print(f"  Gate:   passed ({pending_approval['gate_rule']})")
-        print(f"  Reason: {pending_approval['gate_reason']}")
-        if pending_approval["new_shipping_address"] is not None:
+        pending_interrupts = result["__interrupt__"]
+        print(
+            f"== {len(pending_interrupts)} ACTION(S) AWAITING APPROVAL "
+            f"-- ticket {ticket_id} =="
+        )
+        for pending_interrupt in pending_interrupts:
+            pending_approval = pending_interrupt.value
+            print(f"\n  Interrupt id: {pending_interrupt.id}")
             print(
-                "  Current address: "
-                f"{json.dumps(pending_approval['current_shipping_address'], ensure_ascii=False)}"
+                f"  Action: {pending_approval['action']} "
+                f"on order {pending_approval['order']}"
             )
+            print(f"  Customer wrote: \"{pending_approval['requested_reference']}\"")
+            print(f"  Amount: {pending_approval['amount']}")
+            print(f"  Gate:   passed ({pending_approval['gate_rule']})")
+            print(f"  Reason: {pending_approval['gate_reason']}")
+            if pending_approval["new_shipping_address"] is not None:
+                print(
+                    "  Current address: "
+                    f"{json.dumps(pending_approval['current_shipping_address'], ensure_ascii=False)}"
+                )
+                print(
+                    "  New address:     "
+                    f"{json.dumps(pending_approval['new_shipping_address'], ensure_ascii=False)}"
+                )
+            if pending_approval["flags"]:
+                print(f"  Flags:  {', '.join(pending_approval['flags'])}")
             print(
-                "  New address:     "
-                f"{json.dumps(pending_approval['new_shipping_address'], ensure_ascii=False)}"
+                f"  To decide: run_ticket.py {ticket_id} "
+                f"--approve {pending_interrupt.id}   or   "
+                f"--reject {pending_interrupt.id}"
             )
-        if pending_approval["flags"]:
-            print(f"  Flags:  {', '.join(pending_approval['flags'])}")
-        print()
-        print(f"  To decide:  run_ticket.py {ticket_id} --approve   or   --reject")
         return
 
     print(f"== Ticket {ticket_id}: {result['ticket_outcome']} ==")
     if result["ticket_outcome"] == "escalated_to_human":
         print(f"  Reason: {result['escalation_reason']}")
-        return
 
-    final_task_result = result["task_results"][-1]
-    print(f"  Task outcome: {final_task_result['outcome']}")
-    action_result = final_task_result["action_result"]
-    if action_result and action_result.get("summary"):
-        print(f"  Action: {action_result['summary']}")
-    if final_task_result["policy_citations"]:
-        print(f"  Policy cited: {', '.join(final_task_result['policy_citations'])}")
+    task_order = {
+        task.get("task_id") or f"task-{task_number + 1}": task_number
+        for task_number, task in enumerate(result["tasks"])
+    }
+    ordered_task_results = sorted(
+        result["task_results"],
+        key=lambda task_result: task_order[
+            task_result.get("task_id")
+            or task_result["task"].get("task_id")
+            or "task-1"
+        ],
+    )
+    for task_number, task_result in enumerate(ordered_task_results, start=1):
+        print(f"  Task {task_number} outcome: {task_result['outcome']}")
+        action_result = task_result["action_result"]
+        if action_result and action_result.get("summary"):
+            print(f"    Action: {action_result['summary']}")
+        if action_result and action_result.get("reason"):
+            print(f"    Reason: {action_result['reason']}")
+        if task_result["policy_citations"]:
+            print(
+                "    Policy cited: "
+                f"{', '.join(task_result['policy_citations'])}"
+            )
     print()
     print("  Reply draft:")
     for draft_line in result["reply_draft"].splitlines():

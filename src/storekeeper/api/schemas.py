@@ -21,6 +21,7 @@ class CreateTicketRequest(BaseModel):
 
 
 class TicketDecisionRequest(BaseModel):
+    interrupt_id: NonEmptyText
     decision: Literal["approve", "reject"]
 
 
@@ -38,6 +39,7 @@ class ShippingAddressResponse(BaseModel):
 
 
 class TaskResponse(BaseModel):
+    task_id: str
     intent: Intent
     order_reference: str | None
     requested_action: RequestedAction | None
@@ -53,6 +55,7 @@ class GateVerdictResponse(BaseModel):
 
 
 class TaskResultResponse(BaseModel):
+    task_id: str
     task: TaskResponse
     outcome: TaskOutcome
     gate_verdict: GateVerdictResponse | None
@@ -61,6 +64,8 @@ class TaskResultResponse(BaseModel):
 
 
 class ApprovalPayloadResponse(BaseModel):
+    interrupt_id: str
+    task_id: str
     question: str
     action: RequestedAction
     order: str
@@ -81,7 +86,7 @@ class TicketSummaryResponse(BaseModel):
 
 
 class TicketDetailResponse(TicketSummaryResponse):
-    pending_approval: ApprovalPayloadResponse | None
+    pending_approvals: list[ApprovalPayloadResponse] = Field(default_factory=list)
     tasks: list[TaskResponse] = Field(default_factory=list)
     task_results: list[TaskResultResponse] = Field(default_factory=list)
     reply_draft: str | None
