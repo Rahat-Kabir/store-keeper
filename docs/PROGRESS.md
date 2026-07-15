@@ -23,12 +23,14 @@ Feature log: what's built, what's next. Details live in
 - [x] 8. Operator console: FastAPI API wrapping the graph and a Vite + React
       single-page UI with full CLI feature parity and single-process serving
 - [ ] 7b. Polish: README GIF/screenshots of the operator console (after 8)
-- [ ] v2. Multi-request tickets: a planner fans tasks out via `Send` to the
+- [x] v2. Multi-request tickets: the classifier's ordered task list is the plan;
+      code validates it and fans tasks out via `Send` to the
       existing task subgraph (actions) or a research path (questions), and a
       composer merges the task results into one reply. Approval stays a graph
-      stage inside the action path — never its own agent. The v1 sockets are
-      already in place: the task subgraph, the classifier's task list, and
-      `draft_reply` drafting from structured results.
+      stage inside the action path — never its own agent. It reuses the task
+      subgraph and the classifier's task list, with
+      `draft_reply` composing from structured results. The API, CLI, and console
+      address each pending interrupt by id.
 - [ ] Backlog: seed-script argparse, scope trim, retry story for tickets
       whose graph run failed after registration
 
@@ -132,3 +134,11 @@ still works when `frontend/dist` is absent; HTTP tests cover both paths.
 Order references are allowlisted (`#`+digits), the returned order must match
 the reference exactly, and the approval screen shows requested vs. found.
 A hostile reference fails softly with zero Shopify calls.
+
+### v2 - Parallel multi-task orchestration (2026-07-15)
+
+The classifier's task list now fans out through deterministic `Send` routing.
+Independent writes pause together with separate interrupt ids; the API, CLI,
+and approval inbox resume one card at a time. Results return to customer order,
+and one composer drafts the final or holding reply. Same-order write plans are
+rejected before lookup so parallel work cannot race on one order.

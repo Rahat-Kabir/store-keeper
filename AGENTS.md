@@ -2,7 +2,7 @@
 
 ## Overview
 
-Early v1 prototype of a CLI-first AI support agent for a Shopify store. The
+Early v2 prototype of a CLI-first AI support agent for a Shopify store. The
 current build connects to a live development store and provides test orders.
 Dangerous store actions are enforced by code and human approval.
 
@@ -34,7 +34,8 @@ Dangerous store actions are enforced by code and human approval.
 - Shared business contracts in `domain.py`; deterministic rules in `policy/`.
 - Ticket classifier in `classify.py`: LangChain structured output on
   `ChatOpenRouter`; the model slug comes from the `OPENROUTER_MODEL` env var.
-- LangGraph pipeline in `graph/`: a ticket-level graph wraps a per-task
+- LangGraph pipeline in `graph/`: a ticket-level graph validates the classifier's
+  flat plan and fans tasks out with `Send`; action workers reuse a per-task
   subgraph (lookup → gate → approval interrupt → execute). All routing is
   plain Python; checkpoints persist in `var/checkpoints.sqlite` with
   `thread_id` = ticket id.
@@ -46,7 +47,7 @@ Dangerous store actions are enforced by code and human approval.
 - Vite + React + TypeScript operator console in `frontend/` uses plain `fetch`
   against `/api/`. The development server proxies API calls to FastAPI; the
   UI creates and lists tickets, displays results and drafts, and resumes pending
-  actions through a safety-detailed approval inbox. After `npm run build`,
+  actions through a safety-detailed multi-approval inbox. After `npm run build`,
   FastAPI serves `frontend/dist` at `/`; the API still starts without a build.
 - Policy corpus in `policies/` (markdown, one topic per file).
   `policy_docs.find_policy_context()` is the retrieval seam: action intents
@@ -71,8 +72,13 @@ Dangerous store actions are enforced by code and human approval.
   the customer-written reference next to the resolved order.
 - **Classifier picks intent only** — `requested_action` is derived in code from a
   fixed intent→action mapping, so the model cannot emit an inconsistent pair.
-- **Classifier returns a task list even in v1** — multi-request tickets split into
-  one task per request; the v2 planner plugs into this socket without a rewrite.
+- **The classifier's task list is the v2 plan** — code assigns stable task ids,
+  validates same-order write conflicts, fans independent tasks out with `Send`,
+  and restores results to customer order. There is no LLM supervisor.
+- **Parallel approvals resume by interrupt id** — independent eligible writes
+  can pause together, while the API, CLI, and console decide one card at a time.
+- **v1 checkpoints stay readable** — API normalization synthesizes `task-1`
+  for legacy tasks, results, and approval payloads that predate task ids.
 - **Approval is a graph position, not a prompt** — `await_approval` calls
   `interrupt()` on the only edge that leads to `execute_action`; the human
   decision routes via `Command`, and SQLite checkpoints let it survive restarts.
@@ -114,21 +120,22 @@ Dangerous store actions are enforced by code and human approval.
 | `frontend/src/components/TicketDetail.tsx` | 180 | Ticket result, draft, citation, and pending-state display. |
 | `frontend/src/components/ApprovalCard.tsx` | 185 | Approval safety details, address comparison, and decision controls. |
 | `src/storekeeper/graph/state.py` | 30 | Ticket and task state schemas. |
-| `src/storekeeper/graph/nodes.py` | 345 | Graph nodes, routes, approval interrupt, policy answers. |
-| `src/storekeeper/graph/build.py` | 110 | Assembles ticket graph + task subgraph. |
+| `src/storekeeper/graph/task_plan.py` | 45 | Rejects unsafe same-order parallel write plans. |
+| `src/storekeeper/graph/nodes.py` | 440 | Fan-out routes, approval interrupt, policy answers, and composer. |
+| `src/storekeeper/graph/build.py` | 130 | Assembles the fan-out ticket graph + task subgraph. |
 | `scripts/smoke_shopify.py` | 30 | Verifies the live store connection. |
 | `scripts/seed_store.py` | 300 | Creates and resumes the 50-order test dataset. |
 | `scripts/check_order_policy.py` | 50 | Runs the gate against one live order. |
 | `scripts/classify_ticket.py` | 30 | Classifies one ticket from the CLI. |
 | `scripts/index_policies.py` | 15 | Rebuilds the local Chroma policy index. |
 | `scripts/search_policy.py` | 30 | Shows top policy chunks and cosine distances. |
-| `scripts/run_ticket.py` | 95 | Runs or resumes one ticket through the graph. |
+| `scripts/run_ticket.py` | 150 | Runs tickets and resumes individual interrupts. |
 | `tests/test_policy_gate.py` | 125 | Policy rule and boundary tests. |
 | `tests/test_shopify_operations.py` | 115 | Order lookup and normalization tests. |
 | `tests/test_classify.py` | 190 | Classifier schema, mapping, and conversion tests. |
 | `tests/test_shopify_writes.py` | 315 | Cancel, refund, and address-write tests. |
 | `tests/test_policy_docs.py` | 150 | Policy chunking, routing, and gate-consistency tests. |
-| `tests/test_graph.py` | 460 | Graph routing, interrupt, resume, and answering tests. |
+| `tests/test_graph.py` | 575 | Graph routing, parallel interrupts, resume, and answering tests. |
 | `tests/test_tickets.py` | 135 | Ticket registry, unique-id, lookup, and status tests. |
 | `tests/test_api.py` | 275 | Stubbed HTTP workflow, API errors, and static-serving tests. |
 
@@ -144,7 +151,7 @@ uv run python scripts/index_policies.py
 uv run python scripts/search_policy.py "How long is your warranty?"
 uv run python scripts/run_ticket.py TICKET-1 "Please cancel order #1001."
 uv run python scripts/run_ticket.py TICKET-2 "Change order #1002 to 20 Lake Road, Dhaka, Dhaka 1205, Bangladesh."
-uv run python scripts/run_ticket.py TICKET-1 --approve
+uv run python scripts/run_ticket.py TICKET-1 --approve INTERRUPT_ID
 uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
 cd frontend
 npm install

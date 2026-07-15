@@ -5,7 +5,7 @@ import {
   getHistoryStatusText,
   getTicketPresentation,
 } from '../ticketPresentation'
-import type { TicketDetailResponse, TicketSummary } from '../types'
+import type { ApprovalPayload, TicketDetailResponse, TicketSummary } from '../types'
 import { StatusBadge } from './StatusBadge'
 
 const HISTORY_PAGE_SIZE = 10
@@ -38,6 +38,21 @@ export function TicketList({
     () => tickets.filter((ticket) => ticket.status === 'pending_approval'),
     [tickets],
   )
+  const pendingApprovalEntries = useMemo<
+    Array<{ ticket: TicketSummary; approval: ApprovalPayload | null }>
+  >(
+    () =>
+      pendingTickets.flatMap<{ ticket: TicketSummary; approval: ApprovalPayload | null }>(
+        (ticket) => {
+          const approvals = ticketDetailsById[ticket.ticket_id]?.pending_approvals
+          if (!approvals || approvals.length === 0) {
+            return [{ ticket, approval: null }]
+          }
+          return approvals.map((approval) => ({ ticket, approval }))
+        },
+      ),
+    [pendingTickets, ticketDetailsById],
+  )
   const historyTickets = useMemo(
     () => tickets.filter((ticket) => ticket.status !== 'pending_approval'),
     [tickets],
@@ -69,7 +84,7 @@ export function TicketList({
         <>
           <div className="ticket-zone-heading">
             <h1 className="section-label">
-              Needs your approval ({pendingTickets.length})
+              Needs your approval ({pendingApprovalEntries.length})
             </h1>
             <button
               className="primary-button new-ticket-button"
@@ -86,9 +101,7 @@ export function TicketList({
             </div>
           ) : (
             <div className="pending-ticket-list">
-              {pendingTickets.map((ticket) => {
-                const ticketDetail = ticketDetailsById[ticket.ticket_id]
-                const approval = ticketDetail?.pending_approval
+              {pendingApprovalEntries.map(({ ticket, approval }) => {
                 const isSelected =
                   !isCreatingTicket && ticket.ticket_id === selectedTicketId
 
@@ -96,7 +109,7 @@ export function TicketList({
                   <button
                     className={`pending-ticket-card${isSelected ? ' selected' : ''}`}
                     type="button"
-                    key={ticket.ticket_id}
+                    key={`${ticket.ticket_id}-${approval?.interrupt_id ?? 'loading'}`}
                     onClick={() => onSelectTicket(ticket.ticket_id)}
                     aria-current={isSelected ? 'true' : undefined}
                   >

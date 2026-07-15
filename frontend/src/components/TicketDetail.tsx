@@ -17,7 +17,7 @@ interface TicketDetailProps {
   errorMessage: string | null
   hasTickets: boolean
   onCreateTicket: () => void
-  onDecide: (decision: TicketDecision) => Promise<void>
+  onDecide: (interruptId: string, decision: TicketDecision) => Promise<void>
   onRetry: () => void
 }
 
@@ -31,8 +31,11 @@ export function TicketDetail({
   onRetry,
 }: TicketDetailProps) {
   const [hasCopiedDraft, setHasCopiedDraft] = useState(false)
-  const [activeDecision, setActiveDecision] = useState<TicketDecision | null>(null)
-  const [decisionError, setDecisionError] = useState<string | null>(null)
+  const [activeDecision, setActiveDecision] = useState<{
+    interruptId: string
+    decision: TicketDecision
+  } | null>(null)
+  const [decisionErrors, setDecisionErrors] = useState<Record<string, string>>({})
 
   if (isLoading) {
     return <p className="main-message">Loading ticket details…</p>
@@ -86,13 +89,16 @@ export function TicketDetail({
     window.setTimeout(() => setHasCopiedDraft(false), 1800)
   }
 
-  const handleDecision = async (decision: TicketDecision) => {
-    setActiveDecision(decision)
-    setDecisionError(null)
+  const handleDecision = async (interruptId: string, decision: TicketDecision) => {
+    setActiveDecision({ interruptId, decision })
+    setDecisionErrors((currentErrors) => ({ ...currentErrors, [interruptId]: '' }))
     try {
-      await onDecide(decision)
+      await onDecide(interruptId, decision)
     } catch (error) {
-      setDecisionError(getDecisionErrorMessage(error))
+      setDecisionErrors((currentErrors) => ({
+        ...currentErrors,
+        [interruptId]: getDecisionErrorMessage(error),
+      }))
     } finally {
       setActiveDecision(null)
     }
@@ -103,8 +109,10 @@ export function TicketDetail({
       <header className="detail-heading">
         <div className="ticket-title-row">
           <h1>
-            {ticket.pending_approval
-              ? getApprovalActionHeadline(ticket.pending_approval)
+            {ticket.pending_approvals.length === 1
+              ? getApprovalActionHeadline(ticket.pending_approvals[0])
+              : ticket.pending_approvals.length > 1
+                ? `${ticket.pending_approvals.length} approvals required`
               : 'Ticket'}
           </h1>
           {ticket.status === 'pending_approval' ? (
@@ -144,15 +152,25 @@ export function TicketDetail({
         </div>
       ) : null}
 
-      {ticket.status === 'pending_approval' && ticket.pending_approval ? (
-        <ApprovalCard
-          approval={ticket.pending_approval}
-          activeDecision={activeDecision}
-          errorMessage={decisionError}
-          onDecide={(decision) => void handleDecision(decision)}
-          onRefresh={onRetry}
-        />
-      ) : null}
+      {ticket.status === 'pending_approval'
+        ? ticket.pending_approvals.map((approval) => (
+            <ApprovalCard
+              key={approval.interrupt_id}
+              approval={approval}
+              activeDecision={
+                activeDecision?.interruptId === approval.interrupt_id
+                  ? activeDecision.decision
+                  : null
+              }
+              isDecisionDisabled={activeDecision !== null}
+              errorMessage={decisionErrors[approval.interrupt_id] || null}
+              onDecide={(decision) =>
+                void handleDecision(approval.interrupt_id, decision)
+              }
+              onRefresh={onRetry}
+            />
+          ))
+        : null}
 
       {ticket.reply_draft ? (
         <section className="content-card reply-card">

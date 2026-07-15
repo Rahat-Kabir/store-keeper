@@ -4,7 +4,7 @@ An open-source AI customer-support agent for Shopify. It uses LLMs to
 understand customer requests and draft replies, while deterministic code and
 human approval control sensitive order actions.
 
-> **Project status:** Early v1 in active development. The CLI, localhost API,
+> **Project status:** Early v2 in active development. The CLI, localhost API,
 > and React operator console have full ticket-workflow parity. FastAPI can serve
 > the built console and API from one local process. It is designed for
 > development stores and is not production-ready yet.
@@ -31,19 +31,25 @@ cannot rewrite the store's policy rules or bypass the human approval step.
 
 ```mermaid
 flowchart LR
-    ticket([Customer ticket]) --> classify[LLM classifies intent]
-    classify --> lookup[Shopify order lookup]
+    ticket([Customer ticket]) --> classify[LLM classifies task list]
+    classify --> validate{Code validates plan}
+    validate --> fanout[Code fans tasks out]
+    fanout --> lookup[Shopify order lookup]
+    fanout --> answer[Read-only policy answer]
     lookup --> gate{Deterministic policy gate}
-    gate -- denied --> draft[LLM drafts reply]
+    gate -- denied --> compose[LLM composes one reply]
     gate -- eligible --> approval{Human approval}
     approval -- approved --> execute[Execute on Shopify]
-    approval -- rejected --> draft
-    execute --> draft
+    approval -- rejected --> compose
+    execute --> compose
+    answer --> compose
 ```
 
-The ticket graph wraps a reusable task pipeline. Eligible write actions pause
-at a LangGraph interrupt, and SQLite checkpoints allow the operator to approve
-or reject them from a later process.
+The classifier's ordered task list is the v2 plan. Deterministic code validates
+it and uses LangGraph `Send` to run independent tasks in parallel. Eligible
+write actions each pause at their own interrupt, while read-only questions can
+finish immediately. SQLite checkpoints allow every approval to be decided by
+id from a later process. One composer merges the ordered results into one reply.
 
 ### See it in a trace
 
@@ -74,10 +80,11 @@ covering normal, fulfilled, old, and high-value policy cases.
 ## Current capabilities
 
 - Classifies one or more requests from a customer ticket into typed tasks.
+- Fans independent tasks out in parallel and restores results to ticket order.
 - Looks up real orders through the Shopify GraphQL Admin API.
 - Applies deterministic cancellation, refund, and address-change policy rules.
 - Requires human approval before every ticket-pipeline order write.
-- Persists pending approvals in SQLite so they survive process restarts.
+- Persists any number of pending approvals in SQLite so they survive restarts.
 - Registers ticket ids separately and refuses accidental reuse of an existing id.
 - Exposes the ticket workflow through a localhost FastAPI operator API.
 - Creates, lists, reviews, approves, and rejects tickets in a local React console.
@@ -85,7 +92,8 @@ covering normal, fulfilled, old, and high-value policy cases.
   on Shopify.
 - Answers policy questions from the store's markdown policy documents.
 - Keeps only citations that refer to policy documents actually provided.
-- Drafts a final customer reply from the structured task results.
+- Drafts one customer reply from all structured task results, including holding
+  replies for work that needs a person.
 
 ## Quickstart
 
@@ -158,13 +166,13 @@ uv run python scripts/run_ticket.py TICKET-1002 "Change order #1002 to 20 Lake R
 Once a ticket ID has been registered or checkpointed, it cannot start another
 ticket. Keep the same ID only when resuming its pending approval.
 
-If the action passes the policy gate, the graph pauses and prints the pending
-approval. Resume it from the same or a later process:
+If actions pass the policy gate, the graph prints every pending approval and
+its interrupt id. Resume one card at a time from the same or a later process:
 
 ```powershell
-uv run python scripts/run_ticket.py TICKET-1001 --approve
+uv run python scripts/run_ticket.py TICKET-1001 --approve INTERRUPT_ID
 # or
-uv run python scripts/run_ticket.py TICKET-1001 --reject
+uv run python scripts/run_ticket.py TICKET-1001 --reject INTERRUPT_ID
 ```
 
 > **Warning:** Approving an eligible cancellation, refund, or address change executes a real
@@ -246,7 +254,10 @@ curl.exe -s localhost:8000/api/tickets
 - The localhost console has no authentication and must not be exposed publicly.
 - Address changes require the complete new street, city, state or province,
   postal code, and country. Incomplete requests escalate to a human.
-- Multi-request tickets currently escalate instead of executing several tasks.
+- Same-order write combinations escalate instead of running concurrently.
+- Plans cannot yet express dependencies, conditions, or replanning from looked-up facts.
+- Missing order information produces a holding reply but does not yet ask the
+  customer a structured clarifying question.
 - OpenRouter-backed commands make paid model calls.
 - LangSmith tracing is optional and can send trace data to an external service
   when enabled.

@@ -11,7 +11,7 @@ uv run python scripts/classify_ticket.py "Change order #1036 to 20 Lake Road, Dh
 uv run python scripts/index_policies.py
 uv run python scripts/search_policy.py "How long is your warranty?"
 uv run python scripts/run_ticket.py TICKET-1 "Please cancel order #1001."
-uv run python scripts/run_ticket.py TICKET-1 --approve
+uv run python scripts/run_ticket.py TICKET-1 --approve INTERRUPT_ID
 uv run python scripts/run_ticket.py TICKET-2 "How long is your warranty?"
 uv run python scripts/run_ticket.py TICKET-3 "Change order #1036 to 20 Lake Road, Dhaka, Dhaka 1205, Bangladesh."
 uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
@@ -37,7 +37,8 @@ $ticketBody = @{ticket_id = $ticketId; ticket_text = "Please cancel order #1003.
 $ticketBody | curl.exe -s -X POST localhost:8000/api/tickets -H "Content-Type: application/json" --data-binary '@-'
 curl.exe -s localhost:8000/api/tickets
 curl.exe -s "localhost:8000/api/tickets/$ticketId"
-$decisionBody = @{decision = "reject"} | ConvertTo-Json -Compress
+$interruptId = (curl.exe -s "localhost:8000/api/tickets/$ticketId" | ConvertFrom-Json).pending_approvals[0].interrupt_id
+$decisionBody = @{interrupt_id = $interruptId; decision = "reject"} | ConvertTo-Json -Compress
 $decisionBody | curl.exe -s -X POST "localhost:8000/api/tickets/$ticketId/decision" -H "Content-Type: application/json" --data-binary '@-'
 ```
 
@@ -71,6 +72,11 @@ days must resolve as Denied by policy with a citation and never enter the inbox.
 
 For an address-change ticket, confirm the card shows the current and proposed
 addresses side by side. Rejecting it must preserve the original Shopify address.
+
+For v2, create one ticket with two independent eligible writes against two
+different unfulfilled orders. Both approval cards must appear together. Reject
+one card and confirm the other remains pending; reject the second and confirm
+one final draft covers both results in the customer's original request order.
 
 To verify single-process serving, stop Vite after the frontend checks, build the
 console, and run only FastAPI:

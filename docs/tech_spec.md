@@ -24,8 +24,10 @@ comes from the `OPENROUTER_MODEL` env variable.
   leave omitted fields null. Automation requires street, city, state or
   province, postal code, and country; incomplete requests escalate instead of
   guessing.
-- Output is a list of tasks even in v1: multi-request tickets classify into
-  one task per request, in ticket order. This is where the v2 planner plugs in.
+- Output is an ordered task list. Code assigns `task-1`, `task-2`, and so on
+  after classification; these ids correlate fan-out results and approvals
+  without letting the model choose execution identity. In v2 this flat list is
+  the plan.
 - Tests inject a fake model; the unit suite makes no network calls.
 
 ## Policy corpus and answering
@@ -47,7 +49,7 @@ comes from the `OPENROUTER_MODEL` env variable.
   policy document. `scripts/search_policy.py` prints the nearest three chunks
   and their cosine distances so retrieval quality can be checked before graph
   use.
-- `answer_policy_question` (ticket-level node) answers with structured output
+- The read-only policy worker answers with structured output
   (`PolicyAnswer`); citations are kept only if they name documents that were
   actually provided. The result is a `TaskResult` with outcome `"answered"`
   and `policy_citations`; `draft_reply` remains the single reply author.
@@ -74,11 +76,13 @@ shared SQLite checkpointer and compiles the existing graph once. Tests inject a
 stub graph through the same factory.
 
 `api/schemas.py` defines the public Pydantic request and response contracts.
-Responses mirror ticket state, task results, and the approval interrupt rather
+Responses mirror ticket state, ordered task results, and all pending approval interrupts rather
 than returning raw checkpoint objects. Duplicate ids and decisions on tickets
 that are not pending return 409; unknown registry ids return 404. Endpoints use
 plain `def` because graph, model, Shopify, and SQLite operations are synchronous.
 The API never calls Shopify, the classifier, or the drafter directly.
+The response builder assigns deterministic fallback ids to v1 tasks, results,
+and approval payloads, so checkpoints created before `task_id` remain readable.
 
 ## Operator console
 
@@ -99,12 +103,12 @@ reply draft, and verified citations on the right. Detailed outcome badges are
 derived from the selected ticket's `task_results`; unselected list rows use
 the checkpoint-derived summary status.
 
-Pending tickets render the API's approval payload without changing its field
+Pending tickets render every API approval payload without changing its field
 names: customer-written reference, resolved Shopify order, action, amount, gate
 rule and reason, flags, and current versus proposed shipping addresses. Approve
-and Reject call `POST /api/tickets/{ticket_id}/decision`, disable both controls
-while the synchronous graph resume runs, and replace the card with the returned
-outcome and reply. The approve button names the exact Shopify consequence.
+and Reject call `POST /api/tickets/{ticket_id}/decision` with that card's
+`interrupt_id`, disable that card while the synchronous graph resume runs, and
+keep other pending cards visible. The approve button names the exact Shopify consequence.
 Concurrent-decision 409s and unknown-ticket 404s remain visible with a refresh
 action instead of clearing the selected ticket.
 
@@ -115,14 +119,14 @@ deployment surface.
 
 `graph/build.py` assembles two LangGraph `StateGraph`s:
 
-- **Ticket graph** (`TicketState`): `classify` → route → `run_task_pipeline`,
-  `answer_policy_question`, or `escalate_ticket` → `draft_reply`. Escalation
-  paths: multiple requests, intent `other`, no order reference, or an incomplete
-  address-change request.
+- **Ticket graph** (`TicketState`): `classify` → `validate_task_plan` → a
+  `Send` fan-out to one `process_task` worker per task → `draft_reply`.
+  Unsupported or incomplete individual tasks become structured escalation
+  results. Conflicting writes for the same order escalate before fan-out.
 - **Task pipeline subgraph** (`TaskState`): `lookup_order` → `policy_gate` →
   route → `await_approval` (denied requests skip straight to a result). The
-  subgraph is invoked by a side-effect-free wrapper node — the v2 planner will
-  fan out to this same subgraph via `Send`.
+  subgraph is invoked by each action worker. Policy questions stay on a bounded
+  read-only branch and never enter the write subgraph.
 
 Rules of the graph:
 
@@ -130,7 +134,9 @@ Rules of the graph:
   chooses an edge. There is no path to `execute_action` that bypasses
   `policy_gate` and `await_approval`.
 - `await_approval` calls `interrupt()` with a JSON-safe payload and routes the
-  decision with `Command(goto=...)`. Resume values: `"approve"` / `"reject"`.
+  decision with `Command(goto=...)`. Parallel workers can expose several
+  interrupts at once; callers resume one with
+  `Command(resume={interrupt_id: "approve" | "reject"})`.
 - Checkpoints persist in `var/checkpoints.sqlite` (`SqliteSaver`);
   `thread_id` is the ticket id, so an approval survives process restarts.
 - `execute_action` runs real writes from `shopify/writes.py`: `cancel_order`
@@ -157,9 +163,10 @@ Rules of the graph:
   facts, decisions, replies — locally and indefinitely. Keep it private.
 - **Shopify** receives only order lookups and approved write mutations; ticket
   text itself is never sent to Shopify.
-- A missing order becomes outcome `failed` and an apologetic reply draft.
-- `draft_reply` is an LLM call over the structured `task_results` list;
-  promoting it to the v2 composer is a prompt change.
+- A missing order becomes outcome `failed`, keeps the ticket escalated, and
+  receives an apologetic holding reply draft.
+- `draft_reply` is the composer: one LLM call over the complete,
+  customer-ordered `task_results` list after all branches finish.
 
 ## Policy gate
 

@@ -4,6 +4,17 @@ Problems we hit and how we fixed them. Newest first. Format: symptom â†’ cause â
 
 ---
 
+## v1 tickets returned 500 after adding v2 task ids (2026-07-15)
+
+**Symptom:** The operator console loaded new v2 tickets, but detail requests for
+older tickets returned 500 with `KeyError: 'task_id'`.
+
+**Cause:** Existing SQLite checkpoints contain v1 tasks and approval payloads
+created before task ids existed.
+
+**Fix:** Normalize legacy tasks, results, and approval payloads at the API
+boundary, and use `task-1` when an old single-task graph resumes.
+
 ## Operator console showed "Unexpected token '<'" (2026-07-14)
 
 **Symptom:** The ticket list failed with `Unexpected token '<'` because the

@@ -8,6 +8,7 @@ import type {
 interface ApprovalCardProps {
   approval: ApprovalPayload
   activeDecision: TicketDecision | null
+  isDecisionDisabled: boolean
   errorMessage: string | null
   onDecide: (decision: TicketDecision) => void
   onRefresh: () => void
@@ -22,17 +23,18 @@ const ACTION_LABELS: Record<ApprovalPayload['action'], string> = {
 export function ApprovalCard({
   approval,
   activeDecision,
+  isDecisionDisabled,
   errorMessage,
   onDecide,
   onRefresh,
 }: ApprovalCardProps) {
   const approveButtonLabel = getApproveButtonLabel(approval)
-  const isSubmittingDecision = activeDecision !== null
+  const approvalHeadingId = `approval-heading-${approval.interrupt_id}`
 
   return (
-    <section className="content-card approval-card" aria-labelledby="approval-heading">
+    <section className="content-card approval-card" aria-labelledby={approvalHeadingId}>
       <span className="eyebrow approval-eyebrow">Awaiting your approval</span>
-      <h2 id="approval-heading">{getApprovalActionHeadline(approval)}</h2>
+      <h2 id={approvalHeadingId}>{getApprovalActionHeadline(approval)}</h2>
 
       <dl className="approval-facts-grid">
         <div>
@@ -105,7 +107,7 @@ export function ApprovalCard({
           <button
             className="primary-button approve-button"
             type="button"
-            disabled={isSubmittingDecision}
+            disabled={isDecisionDisabled}
             onClick={() => onDecide('approve')}
           >
             {activeDecision === 'approve' ? 'Executing…' : approveButtonLabel}
@@ -113,7 +115,7 @@ export function ApprovalCard({
           <button
             className="secondary-button reject-button"
             type="button"
-            disabled={isSubmittingDecision}
+            disabled={isDecisionDisabled}
             onClick={() => onDecide('reject')}
           >
             {activeDecision === 'reject' ? 'Rejecting…' : 'Reject'}

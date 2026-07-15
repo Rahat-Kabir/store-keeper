@@ -48,7 +48,7 @@ Three things to notice:
 Approve the pending action:
 
 ```powershell
-uv run python scripts/run_ticket.py TICKET-DEMO-1 --approve
+uv run python scripts/run_ticket.py TICKET-DEMO-1 --approve INTERRUPT_ID
 ```
 
 ![Resumed run where the execute node appears and the reply is drafted](images/trace-resume.png)
@@ -70,12 +70,21 @@ uv run python scripts/run_ticket.py TICKET-DEMO-2 "How long is your warranty and
 
 ![Policy answer trace with the verified citation highlighted](images/trace-policy-rag.png)
 
-- The tree is `classify → answer_policy_question → draft_reply`. There is no
+- The tree is `classify → validate_task_plan → process_task → draft_reply`.
+  Inside `process_task`, a policy question uses the read-only answer path. There is no
   task pipeline at all: no order lookup, no gate, no approval — nothing to
   approve, because nothing writes.
-- Open the model call inside `answer_policy_question` and check its **Input**
+- Open the policy-answer model call inside `process_task` and check its **Input**
   tab: the prompt contains the policy chunks retrieved from the local Chroma
   index, not whole policy files.
 - The **Output** is a structured `PolicyAnswer` whose `cited_documents` name
   the sources used. Code verifies the citations afterwards and drops any
   document the model names but was never actually given.
+
+## A multi-request ticket fans out
+
+For v2 traces, open a ticket with independent requests. After
+`validate_task_plan`, LangGraph creates one `process_task` branch per classified
+task through `Send`. Several `await_approval` nodes may pause in the same turn.
+Each resume addresses one interrupt id; `draft_reply` appears only after every
+branch has completed, then composes the ordered results once.

@@ -113,12 +113,15 @@ function App() {
     await refreshTickets(createdTicket.ticket_id)
   }
 
-  const handleTicketDecision = async (decision: TicketDecision) => {
+  const handleTicketDecision = async (
+    interruptId: string,
+    decision: TicketDecision,
+  ) => {
     if (!selectedTicketId) {
       throw new Error('Select a ticket before making a decision.')
     }
 
-    const decidedTicket = await decideTicket(selectedTicketId, decision)
+    const decidedTicket = await decideTicket(selectedTicketId, interruptId, decision)
     setSelectedTicket(decidedTicket)
     setTicketDetailsById((currentDetails) => ({
       ...currentDetails,
@@ -127,9 +130,12 @@ function App() {
     await refreshTickets(decidedTicket.ticket_id)
   }
 
-  const pendingApprovalCount = tickets.filter(
-    (ticket) => ticket.status === 'pending_approval',
-  ).length
+  const pendingApprovalCount = tickets.reduce((approvalCount, ticket) => {
+    if (ticket.status !== 'pending_approval') {
+      return approvalCount
+    }
+    return approvalCount + (ticketDetailsById[ticket.ticket_id]?.pending_approvals.length ?? 1)
+  }, 0)
 
   return (
     <div className="operator-console">

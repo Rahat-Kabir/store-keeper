@@ -24,6 +24,7 @@ export async function createTicket(ticketText: string): Promise<TicketDetailResp
 
 export async function decideTicket(
   ticketId: string,
+  interruptId: string,
   decision: TicketDecision,
 ): Promise<TicketDetailResponse> {
   return requestJson<TicketDetailResponse>(
@@ -33,7 +34,7 @@ export async function decideTicket(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ decision }),
+      body: JSON.stringify({ interrupt_id: interruptId, decision }),
     },
   )
 }

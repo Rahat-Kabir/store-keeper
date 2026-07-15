@@ -6,6 +6,7 @@ export type TaskOutcome =
   | 'rejected_by_human'
   | 'denied_by_policy'
   | 'answered'
+  | 'escalated_to_human'
   | 'failed'
 
 export interface TicketSummary {
@@ -29,6 +30,7 @@ export interface ShippingAddress {
 }
 
 export interface TicketTask {
+  task_id: string
   intent: 'cancel_order' | 'refund_request' | 'address_change' | 'policy_question' | 'other'
   order_reference: string | null
   requested_action: 'cancel_order' | 'issue_refund' | 'update_shipping_address' | null
@@ -44,6 +46,7 @@ export interface GateVerdict {
 }
 
 export interface TaskResult {
+  task_id: string
   task: TicketTask
   outcome: TaskOutcome
   gate_verdict: GateVerdict | null
@@ -52,6 +55,8 @@ export interface TaskResult {
 }
 
 export interface ApprovalPayload {
+  interrupt_id: string
+  task_id: string
   question: string
   action: 'cancel_order' | 'issue_refund' | 'update_shipping_address'
   order: string
@@ -65,7 +70,7 @@ export interface ApprovalPayload {
 }
 
 export interface TicketDetailResponse extends TicketSummary {
-  pending_approval: ApprovalPayload | null
+  pending_approvals: ApprovalPayload[]
   tasks: TicketTask[]
   task_results: TaskResult[]
   reply_draft: string | null
