@@ -180,28 +180,42 @@ uv run python scripts/check_order_policy.py '#1001' cancel_order
 
 ### Run the operator console
 
-For frontend development, start FastAPI in the first PowerShell terminal:
+Install the frontend dependencies once:
+
+```powershell
+cd frontend
+npm install
+cd ..
+```
+
+Start FastAPI from the repository root:
 
 ```powershell
 uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
 ```
 
-Start Vite in a second terminal, then open `http://127.0.0.1:5173`:
+In a second PowerShell terminal, start Vite:
 
 ```powershell
 cd frontend
-npm install
 npm run dev
 ```
 
-To run the built console and API from one process, build the frontend and then
-start FastAPI from the repository root:
+Open `http://127.0.0.1:5173`.
+
+#### Run from one process
+
+Build the frontend:
 
 ```powershell
 cd frontend
-npm install
 npm run build
 cd ..
+```
+
+Then start FastAPI from the repository root:
+
+```powershell
 uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
 ```
 
