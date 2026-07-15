@@ -10,9 +10,11 @@ from langchain_openrouter import ChatOpenRouter
 
 from storekeeper.config import load_classifier_settings
 from storekeeper.graph.nodes import (
+    answer_policy_task,
     await_approval_node,
+    build_task_escalation_result,
+    dispatch_ticket_tasks,
     escalate_ticket_node,
-    make_answer_policy_question_node,
     make_classify_node,
     make_draft_reply_node,
     make_execute_action_node,
@@ -20,12 +22,13 @@ from storekeeper.graph.nodes import (
     policy_gate_node,
     record_human_rejection_node,
     record_policy_denial_node,
-    route_after_classify,
     route_after_gate,
     route_after_lookup,
+    validate_task_plan_node,
 )
-from storekeeper.graph.state import TaskState, TicketState
+from storekeeper.graph.state import TaskState, TicketState, TicketTaskWorkerState
 from storekeeper.shopify.client import ShopifyClient
+from storekeeper.shopify.writes import requested_shipping_address_is_complete
 
 
 def build_task_pipeline_graph(shopify_client: ShopifyClient | None) -> CompiledStateGraph:
@@ -72,13 +75,34 @@ def build_ticket_graph(
 
     task_pipeline_graph = build_task_pipeline_graph(shopify_client)
 
-    def run_task_pipeline(state: TicketState, config: RunnableConfig) -> dict:
-        # This wrapper re-runs whenever the approval interrupt inside the
-        # subgraph resumes, so it must stay free of side effects.
-        single_task = state["tasks"][0]
+    def process_task(state: TicketTaskWorkerState, config: RunnableConfig) -> dict:
+        # This worker re-runs whenever an interrupt inside the action subgraph
+        # resumes, so it must stay free of side effects outside that subgraph.
+        task = state["task"]
+        if task["intent"] == "policy_question":
+            task_result = answer_policy_task(
+                state["ticket_text"],
+                task,
+                answer_model,
+            )
+            return {"task_results": [task_result]}
+
+        task_can_use_action_pipeline = (
+            task["requested_action"] is not None
+            and task["order_reference"] is not None
+            and (
+                task["intent"] != "address_change"
+                or requested_shipping_address_is_complete(
+                    task["new_shipping_address"]
+                )
+            )
+        )
+        if not task_can_use_action_pipeline:
+            return {"task_results": [build_task_escalation_result(task)]}
+
         task_output = task_pipeline_graph.invoke(
             {
-                "task": single_task,
+                "task": task,
                 "shopify_order": None,
                 "gate_verdict": None,
                 "task_result": None,
@@ -89,19 +113,19 @@ def build_ticket_graph(
 
     ticket_builder = StateGraph(TicketState)
     ticket_builder.add_node("classify", make_classify_node(classifier_model))
-    ticket_builder.add_node("run_task_pipeline", run_task_pipeline)
-    ticket_builder.add_node("answer_policy_question", make_answer_policy_question_node(answer_model))
+    ticket_builder.add_node("validate_task_plan", validate_task_plan_node)
+    ticket_builder.add_node("process_task", process_task)
     ticket_builder.add_node("escalate_ticket", escalate_ticket_node)
     ticket_builder.add_node("draft_reply", make_draft_reply_node(draft_model))
 
     ticket_builder.add_edge(START, "classify")
+    ticket_builder.add_edge("classify", "validate_task_plan")
     ticket_builder.add_conditional_edges(
-        "classify",
-        route_after_classify,
-        ["run_task_pipeline", "answer_policy_question", "escalate_ticket"],
+        "validate_task_plan",
+        dispatch_ticket_tasks,
+        ["process_task", "escalate_ticket"],
     )
-    ticket_builder.add_edge("run_task_pipeline", "draft_reply")
-    ticket_builder.add_edge("answer_policy_question", "draft_reply")
-    ticket_builder.add_edge("escalate_ticket", END)
+    ticket_builder.add_edge("process_task", "draft_reply")
+    ticket_builder.add_edge("escalate_ticket", "draft_reply")
     ticket_builder.add_edge("draft_reply", END)
     return ticket_builder.compile(checkpointer=checkpointer)

@@ -28,3 +28,12 @@ class TicketState(TypedDict):
     reply_draft: str | None
     ticket_outcome: TicketOutcome | None
     escalation_reason: str | None
+    plan_conflict_reason: str | None
+
+
+class TicketTaskWorkerState(TypedDict):
+    """Isolated input for one task dispatched from the ticket graph."""
+
+    ticket_text: str
+    task: Task
+    task_results: Annotated[list[TaskResult], operator.add]

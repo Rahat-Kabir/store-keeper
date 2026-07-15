@@ -37,7 +37,14 @@ class FakeGraphShopifyClient:
         is_order_lookup = "orders(" in query
         if is_order_lookup:
             self.received_variables = variables
-            return {"orders": {"nodes": self.shopify_orders}}
+            assert variables is not None
+            requested_order_name = variables["searchQuery"].removeprefix("name:")
+            matching_orders = [
+                order
+                for order in self.shopify_orders
+                if order["name"] == requested_order_name
+            ]
+            return {"orders": {"nodes": matching_orders[:1]}}
         self.write_calls.append((query, variables))
         return self.write_responses.pop(0)
 
@@ -87,12 +94,15 @@ def make_classification(
 
 
 def make_live_shopify_order(
-    fulfillment_status: str = "UNFULFILLED", processed_days_ago: int = 3
+    fulfillment_status: str = "UNFULFILLED",
+    processed_days_ago: int = 3,
+    order_name: str = "#1036",
+    order_id: str = "gid://shopify/Order/123",
 ) -> dict:
     processed_at = datetime.now(timezone.utc) - timedelta(days=processed_days_ago)
     return {
-        "id": "gid://shopify/Order/123",
-        "name": "#1036",
+        "id": order_id,
+        "name": order_name,
         "processedAt": processed_at.isoformat(),
         "displayFulfillmentStatus": fulfillment_status,
         "shippingAddress": {
@@ -140,6 +150,7 @@ def make_ticket_input(ticket_text: str = "Please cancel order #1036.") -> dict:
         "reply_draft": None,
         "ticket_outcome": None,
         "escalation_reason": None,
+        "plan_conflict_reason": None,
     }
 
 
@@ -313,7 +324,7 @@ class TicketGraphTests(unittest.TestCase):
         self.assertEqual(result["task_results"][0]["outcome"], "rejected_by_human")
         self.assertEqual(result["ticket_outcome"], "resolved")
 
-    def test_multi_request_ticket_escalates(self) -> None:
+    def test_multi_request_ticket_processes_every_task_and_drafts_one_reply(self) -> None:
         two_request_classification = TicketClassification(
             tasks=[
                 ClassifiedTask(
@@ -330,13 +341,135 @@ class TicketGraphTests(unittest.TestCase):
                 ),
             ]
         )
-        ticket_graph, _, _ = build_test_graph(two_request_classification, [])
+        ticket_graph, _, _ = build_test_graph(
+            two_request_classification,
+            [],
+            policy_answer=PolicyAnswer(
+                answer="Products carry a 12-month warranty.",
+                cited_documents=["warranty.md"],
+            ),
+        )
 
-        result = ticket_graph.invoke(make_ticket_input(), thread_config("multi-1"))
+        with patch(
+            "storekeeper.policy_docs.search_policy_chunks",
+            return_value=[
+                {
+                    "chunk_id": "warranty.md#coverage",
+                    "document_name": "warranty.md",
+                    "heading": "Coverage",
+                    "document_text": "Products carry a 12-month warranty.",
+                    "distance": 0.1,
+                }
+            ],
+        ):
+            result = ticket_graph.invoke(make_ticket_input(), thread_config("multi-1"))
 
         self.assertEqual(result["ticket_outcome"], "escalated_to_human")
-        self.assertIn("multiple requests", result["escalation_reason"])
-        self.assertIsNone(result["reply_draft"])
+        self.assertEqual(
+            [task_result["outcome"] for task_result in result["task_results"]],
+            ["failed", "answered"],
+        )
+        self.assertIsNotNone(result["reply_draft"])
+
+    def test_independent_write_tasks_pause_together_and_resume_by_interrupt_id(self) -> None:
+        two_write_classification = TicketClassification(
+            tasks=[
+                ClassifiedTask(
+                    intent="cancel_order",
+                    order_reference="#1036",
+                    new_shipping_address=None,
+                    confidence=0.95,
+                ),
+                ClassifiedTask(
+                    intent="refund_request",
+                    order_reference="#1037",
+                    new_shipping_address=None,
+                    confidence=0.94,
+                ),
+            ]
+        )
+        ticket_graph, fake_shopify_client, _ = build_test_graph(
+            two_write_classification,
+            [
+                make_live_shopify_order(order_name="#1036"),
+                make_live_shopify_order(
+                    order_name="#1037",
+                    order_id="gid://shopify/Order/124",
+                ),
+            ],
+        )
+        config = thread_config("parallel-approvals-1")
+
+        paused_result = ticket_graph.invoke(make_ticket_input(), config)
+
+        self.assertEqual(len(paused_result["__interrupt__"]), 2)
+        interrupt_ids_by_task_id = {
+            pending_interrupt.value["task_id"]: pending_interrupt.id
+            for pending_interrupt in paused_result["__interrupt__"]
+        }
+        partially_resumed_result = ticket_graph.invoke(
+            Command(
+                resume={interrupt_ids_by_task_id["task-1"]: "reject"}
+            ),
+            config,
+        )
+        self.assertEqual(len(partially_resumed_result["__interrupt__"]), 1)
+        self.assertEqual(
+            partially_resumed_result["__interrupt__"][0].value["task_id"],
+            "task-2",
+        )
+
+        final_result = ticket_graph.invoke(
+            Command(
+                resume={interrupt_ids_by_task_id["task-2"]: "reject"}
+            ),
+            config,
+        )
+
+        self.assertNotIn("__interrupt__", final_result)
+        self.assertEqual(
+            [task_result["task_id"] for task_result in final_result["task_results"]],
+            ["task-1", "task-2"],
+        )
+        self.assertEqual(
+            [task_result["outcome"] for task_result in final_result["task_results"]],
+            ["rejected_by_human", "rejected_by_human"],
+        )
+        self.assertEqual(fake_shopify_client.write_calls, [])
+        self.assertEqual(final_result["reply_draft"], "Drafted reply.")
+
+    def test_parallel_plan_conflict_escalates_same_order_writes(self) -> None:
+        conflicting_classification = TicketClassification(
+            tasks=[
+                ClassifiedTask(
+                    intent="cancel_order",
+                    order_reference="#1036",
+                    new_shipping_address=None,
+                    confidence=0.95,
+                ),
+                ClassifiedTask(
+                    intent="refund_request",
+                    order_reference="1036",
+                    new_shipping_address=None,
+                    confidence=0.94,
+                ),
+            ]
+        )
+        ticket_graph, fake_shopify_client, _ = build_test_graph(
+            conflicting_classification,
+            [make_live_shopify_order()],
+        )
+
+        result = ticket_graph.invoke(
+            make_ticket_input(),
+            thread_config("parallel-conflict-1"),
+        )
+
+        self.assertNotIn("__interrupt__", result)
+        self.assertEqual(result["ticket_outcome"], "escalated_to_human")
+        self.assertIn("same order (#1036)", result["escalation_reason"])
+        self.assertEqual(fake_shopify_client.write_calls, [])
+        self.assertEqual(result["reply_draft"], "Drafted reply.")
 
     def test_policy_question_is_answered_with_citations(self) -> None:
         ticket_graph, fake_shopify_client, _ = build_test_graph(
@@ -430,7 +563,7 @@ class TicketGraphTests(unittest.TestCase):
         result = ticket_graph.invoke(make_ticket_input(), thread_config("missing-1"))
 
         self.assertEqual(result["task_results"][0]["outcome"], "failed")
-        self.assertEqual(result["ticket_outcome"], "resolved")
+        self.assertEqual(result["ticket_outcome"], "escalated_to_human")
         self.assertEqual(result["reply_draft"], "Drafted reply.")
 
     def test_hostile_order_reference_fails_softly_without_any_lookup(self) -> None:
@@ -442,7 +575,7 @@ class TicketGraphTests(unittest.TestCase):
 
         self.assertNotIn("__interrupt__", result)
         self.assertEqual(result["task_results"][0]["outcome"], "failed")
-        self.assertEqual(result["ticket_outcome"], "resolved")
+        self.assertEqual(result["ticket_outcome"], "escalated_to_human")
         # The hostile reference never reached Shopify: no lookup, no writes.
         self.assertIsNone(fake_shopify_client.received_variables)
         self.assertEqual(fake_shopify_client.write_calls, [])

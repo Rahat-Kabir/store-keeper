@@ -104,7 +104,7 @@ class TicketClassification(BaseModel):
 
 def convert_classification_to_tasks(classification: TicketClassification) -> list[Task]:
     domain_tasks: list[Task] = []
-    for classified_task in classification.tasks:
+    for task_number, classified_task in enumerate(classification.tasks, start=1):
         new_shipping_address: ShippingAddress | None = None
         if classified_task.new_shipping_address is not None:
             new_shipping_address = ShippingAddress(
@@ -112,6 +112,7 @@ def convert_classification_to_tasks(classification: TicketClassification) -> lis
             )
         domain_tasks.append(
             Task(
+                task_id=f"task-{task_number}",
                 intent=classified_task.intent,
                 order_reference=classified_task.order_reference,
                 requested_action=INTENT_TO_REQUESTED_ACTION[classified_task.intent],

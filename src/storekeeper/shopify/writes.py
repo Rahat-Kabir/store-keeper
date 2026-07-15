@@ -282,7 +282,7 @@ def _clean_address_value(address_value: str | None) -> str | None:
 def _create_refund(shopify_client: ShopifyClient, refund_input: dict) -> dict:
     # The API requires an idempotency key on refundCreate. Deriving it from the
     # order id means a re-run of this write (interrupt resume, retry) cannot
-    # refund the same order twice — v1 issues at most one full refund per order.
+    # refund the same order twice; plan validation permits at most one write per order.
     idempotency_key = f"storekeeper-full-refund-{refund_input['orderId']}"
     data = shopify_client.graphql(
         REFUND_CREATE_MUTATION,

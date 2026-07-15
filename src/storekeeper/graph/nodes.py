@@ -11,12 +11,13 @@ from typing import Callable, Literal
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END
-from langgraph.types import Command, interrupt
+from langgraph.types import Command, Send, interrupt
 from pydantic import BaseModel, Field
 
 from storekeeper.classify import classify_ticket
 from storekeeper.domain import Task, TaskOutcome, TaskResult
 from storekeeper.graph.state import TaskState, TicketState
+from storekeeper.graph.task_plan import find_task_plan_conflict
 from storekeeper.policy.gate import policy_gate
 from storekeeper.policy_docs import find_policy_context, format_policy_extracts
 from storekeeper.shopify.client import ShopifyClient
@@ -29,7 +30,6 @@ from storekeeper.shopify.writes import (
     build_updated_shipping_address,
     cancel_order,
     issue_full_refund,
-    requested_shipping_address_is_complete,
     update_shipping_address,
 )
 
@@ -49,6 +49,10 @@ Rules:
   they gave, such as the order number.
 - Outcome "answered": relay the provided answer faithfully; do not add policy
   claims that are not in it.
+- Outcome "escalated_to_human": explain that a team member must handle that
+  request and use the provided reason. Do not imply the request was completed.
+- When several task results are provided, cover every result in one coherent
+  reply and keep the customer's original request order.
 - Do not invent order details, amounts, dates, or policy that are not in the input.
 - Sign off as "The Support Team".
 """
@@ -88,31 +92,41 @@ def make_classify_node(classifier_model: BaseChatModel | None) -> Callable:
     return classify_node
 
 
-def route_after_classify(
+def get_task_id(task: Task) -> str:
+    # v1 checkpoints predate task ids and can still resume after upgrading.
+    return task.get("task_id") or "task-1"
+
+
+def validate_task_plan_node(state: TicketState) -> dict:
+    if not state["tasks"]:
+        return {"plan_conflict_reason": "The classifier found no request in the ticket."}
+    return {"plan_conflict_reason": find_task_plan_conflict(state["tasks"])}
+
+
+def dispatch_ticket_tasks(
     state: TicketState,
-) -> Literal["run_task_pipeline", "answer_policy_question", "escalate_ticket"]:
-    tasks = state["tasks"]
-    if len(tasks) != 1:
+) -> Literal["escalate_ticket"] | list[Send]:
+    if state["plan_conflict_reason"] is not None:
         return "escalate_ticket"
-    single_task = tasks[0]
-    if single_task["intent"] == "policy_question":
-        return "answer_policy_question"
-    # "other" tickets have no automated path; a human reads them.
-    if single_task["requested_action"] is None:
-        return "escalate_ticket"
-    if not single_task["order_reference"]:
-        return "escalate_ticket"
-    if single_task["intent"] == "address_change" and not requested_shipping_address_is_complete(
-        single_task["new_shipping_address"]
-    ):
-        return "escalate_ticket"
-    return "run_task_pipeline"
+    return [
+        Send(
+            "process_task",
+            {
+                "ticket_text": state["ticket_text"],
+                "task": task,
+            },
+        )
+        for task in state["tasks"]
+    ]
 
 
 def escalate_ticket_node(state: TicketState) -> dict:
     return {
         "ticket_outcome": "escalated_to_human",
-        "escalation_reason": describe_escalation_reason(state["tasks"]),
+        "escalation_reason": (
+            state["plan_conflict_reason"]
+            or describe_escalation_reason(state["tasks"])
+        ),
     }
 
 
@@ -120,7 +134,7 @@ def describe_escalation_reason(tasks: list[Task]) -> str:
     if len(tasks) == 0:
         return "The classifier found no request in the ticket."
     if len(tasks) > 1:
-        return "The ticket contains multiple requests; v1 handles one per ticket."
+        return "The ticket plan needs human review before its tasks can run."
     single_task = tasks[0]
     if single_task["requested_action"] is None:
         return f"Intent '{single_task['intent']}' has no automated handling yet."
@@ -134,51 +148,63 @@ def describe_escalation_reason(tasks: list[Task]) -> str:
     return "The request cannot be automated."
 
 
-def make_answer_policy_question_node(answer_model: BaseChatModel) -> Callable:
-    def answer_policy_question_node(state: TicketState) -> dict:
-        question_task = state["tasks"][0]
-        policy_extracts = find_policy_context(question_task, ticket_text=state["ticket_text"])
-        structured_answerer = answer_model.with_structured_output(PolicyAnswer)
-        policy_answer = structured_answerer.invoke(
-            [
-                SystemMessage(content=POLICY_ANSWER_SYSTEM_PROMPT),
-                HumanMessage(
-                    content=(
-                        f"Customer question:\n{state['ticket_text']}\n\n"
-                        f"Policy documents:\n{format_policy_extracts(policy_extracts)}"
-                    )
-                ),
-            ]
-        )
-        # Keep only citations naming documents we actually provided.
-        provided_document_names = {extract["document_name"] for extract in policy_extracts}
-        verified_citations = [
-            document_name
-            for document_name in policy_answer.cited_documents
-            if document_name in provided_document_names
+def answer_policy_task(
+    ticket_text: str,
+    question_task: Task,
+    answer_model: BaseChatModel,
+) -> TaskResult:
+    policy_extracts = find_policy_context(question_task, ticket_text=ticket_text)
+    structured_answerer = answer_model.with_structured_output(PolicyAnswer)
+    policy_answer = structured_answerer.invoke(
+        [
+            SystemMessage(content=POLICY_ANSWER_SYSTEM_PROMPT),
+            HumanMessage(
+                content=(
+                    f"Customer question:\n{ticket_text}\n\n"
+                    f"Policy documents:\n{format_policy_extracts(policy_extracts)}"
+                )
+            ),
         ]
-        answered_task_result: TaskResult = {
-            "task": question_task,
-            "outcome": "answered",
-            "gate_verdict": None,
-            "action_result": {"answer": policy_answer.answer},
-            "policy_citations": verified_citations,
-        }
-        return {"task_results": [answered_task_result]}
-
-    return answer_policy_question_node
+    )
+    provided_document_names = {
+        extract["document_name"] for extract in policy_extracts
+    }
+    verified_citations = [
+        document_name
+        for document_name in policy_answer.cited_documents
+        if document_name in provided_document_names
+    ]
+    return {
+        "task_id": get_task_id(question_task),
+        "task": question_task,
+        "outcome": "answered",
+        "gate_verdict": None,
+        "action_result": {"answer": policy_answer.answer},
+        "policy_citations": verified_citations,
+    }
 
 
 def make_draft_reply_node(draft_model: BaseChatModel) -> Callable:
     def draft_reply_node(state: TicketState) -> dict:
+        task_order = {
+            get_task_id(task): task_number
+            for task_number, task in enumerate(state["tasks"])
+        }
+        ordered_task_results = sorted(
+            state["task_results"],
+            key=lambda task_result: task_order.get(
+                task_result.get("task_id") or get_task_id(task_result["task"]),
+                len(task_order),
+            ),
+        )
         # default=str renders Decimal amounts and datetimes readably.
-        task_results_json = json.dumps(state["task_results"], indent=2, default=str)
+        task_results_json = json.dumps(ordered_task_results, indent=2, default=str)
 
         # Denied requests get the relevant policy text so the reply can cite
         # store policy instead of just the gate's one-line reason.
         denied_task_results = [
             task_result
-            for task_result in state["task_results"]
+            for task_result in ordered_task_results
             if task_result["outcome"] == "denied_by_policy"
         ]
         policy_reference_block = ""
@@ -195,14 +221,73 @@ def make_draft_reply_node(draft_model: BaseChatModel) -> Callable:
                     content=(
                         f"Customer message:\n{state['ticket_text']}\n\n"
                         f"Task results:\n{task_results_json}"
+                        f"\n\nTicket escalation reason:\n"
+                        f"{state['escalation_reason'] or '(none)'}"
                         f"{policy_reference_block}"
                     )
                 ),
             ]
         )
-        return {"reply_draft": response.content, "ticket_outcome": "resolved"}
+        task_escalation_reasons = [
+            str(task_result["action_result"]["reason"])
+            for task_result in ordered_task_results
+            if task_result["outcome"] == "escalated_to_human"
+            and task_result["action_result"] is not None
+            and task_result["action_result"].get("reason")
+        ]
+        ticket_is_escalated = (
+            state["ticket_outcome"] == "escalated_to_human"
+            or bool(task_escalation_reasons)
+            or any(
+                task_result["outcome"] == "failed"
+                for task_result in ordered_task_results
+            )
+        )
+        failed_task_reason = (
+            "One or more tasks could not complete automatically."
+            if any(
+                task_result["outcome"] == "failed"
+                for task_result in ordered_task_results
+            )
+            else None
+        )
+        return {
+            "reply_draft": response.content,
+            "ticket_outcome": (
+                "escalated_to_human" if ticket_is_escalated else "resolved"
+            ),
+            "escalation_reason": (
+                state["escalation_reason"]
+                or (" ".join(task_escalation_reasons) if task_escalation_reasons else None)
+                or failed_task_reason
+            ),
+        }
 
     return draft_reply_node
+
+
+def build_task_escalation_result(task: Task) -> TaskResult:
+    return {
+        "task_id": get_task_id(task),
+        "task": task,
+        "outcome": "escalated_to_human",
+        "gate_verdict": None,
+        "action_result": {"reason": describe_task_escalation_reason(task)},
+        "policy_citations": [],
+    }
+
+
+def describe_task_escalation_reason(task: Task) -> str:
+    if task["requested_action"] is None:
+        return f"Intent '{task['intent']}' has no automated handling yet."
+    if not task["order_reference"]:
+        return "The request names no order."
+    if task["intent"] == "address_change":
+        return (
+            "The request needs a complete new shipping address: street, city, "
+            "state or province, postal code, and country."
+        )
+    return "The request cannot be automated."
 
 
 # --- Task-pipeline nodes ------------------------------------------------------
@@ -259,6 +344,7 @@ def await_approval_node(state: TaskState) -> Command[Literal["execute_action", "
     # The payload must be JSON-serializable, so the Decimal amount becomes text.
     approval_payload = {
         "question": "Approve this action?",
+        "task_id": get_task_id(state["task"]),
         "action": state["task"]["requested_action"],
         "order": shopify_order["name"],
         # What the customer actually wrote, so the approver can audit the
@@ -336,6 +422,7 @@ def build_task_result(
     policy_citations: list[str] | None = None,
 ) -> TaskResult:
     return {
+        "task_id": get_task_id(state["task"]),
         "task": state["task"],
         "outcome": outcome,
         "gate_verdict": state.get("gate_verdict"),

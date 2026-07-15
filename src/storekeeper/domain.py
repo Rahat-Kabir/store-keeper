@@ -23,11 +23,15 @@ TaskOutcome = Literal[
     "rejected_by_human",
     "denied_by_policy",
     "answered",
+    "escalated_to_human",
     "failed",
 ]
 
 
 class Task(TypedDict):
+    # Assigned in code after classification so parallel task results can be
+    # restored to the customer's original request order.
+    task_id: str
     intent: Intent
     # The order reference as the customer wrote it (e.g. "#1036"), which is a
     # Shopify order *name* — not the Shopify GraphQL id (ShopifyOrder["id"]).
@@ -74,6 +78,7 @@ class GateVerdict(TypedDict):
 
 
 class TaskResult(TypedDict):
+    task_id: str
     task: Task
     outcome: TaskOutcome
     gate_verdict: GateVerdict | None
