@@ -1,8 +1,16 @@
 # storekeeper
 
-An open-source AI customer-support agent for Shopify. It uses LLMs to
-understand customer requests and draft replies, while deterministic code and
-human approval control sensitive order actions.
+An open-source AI customer-support agent for Shopify. A customer writes
+"please cancel my order"  storekeeper reads the ticket, checks the request
+against your store's rules, queues the cancellation for your one-click
+approval, and drafts the reply. Under the hood, LLMs understand requests and
+write replies, while deterministic code and human approval control every
+sensitive order action.
+
+![Operator console showing one customer message that produced two pending approval cards, each with the matched order, gate rule, amount, and approve and reject buttons](docs/images/console-approval-inbox.png)
+
+*One customer message, two guarded actions: each Shopify write pauses on its
+own approval card until a human decides.*
 
 > **Project status:** Early v2 in active development. The CLI, localhost API,
 > and React operator console have full ticket-workflow parity. FastAPI can serve
@@ -33,7 +41,8 @@ cannot rewrite the store's policy rules or bypass the human approval step.
 flowchart LR
     ticket([Customer ticket]) --> classify[LLM classifies task list]
     classify --> validate{Code validates plan}
-    validate --> fanout[Code fans tasks out]
+    validate -- safe plan --> fanout[Code fans tasks out]
+    validate -- conflict --> escalate[Escalate to a human]
     fanout --> lookup[Shopify order lookup]
     fanout --> answer[Read-only policy answer]
     lookup --> gate{Deterministic policy gate}
@@ -43,6 +52,7 @@ flowchart LR
     approval -- rejected --> compose
     execute --> compose
     answer --> compose
+    escalate -- holding reply --> compose
 ```
 
 The classifier's ordered task list is the v2 plan. Deterministic code validates
@@ -97,6 +107,9 @@ covering normal, fulfilled, old, and high-value policy cases.
 
 ## Quickstart
 
+The commands below run the same in PowerShell and in a POSIX shell;
+platform-specific variants are shown where they differ.
+
 ### Requirements
 
 - Python 3.11+
@@ -110,15 +123,15 @@ covering normal, fulfilled, old, and high-value policy cases.
 
 ### Install and configure
 
-```powershell
+```sh
 uv sync
-copy .env.example .env
+cp .env.example .env
 ```
 
 Add your Shopify and OpenRouter credentials to `.env`, then verify the store
 connection:
 
-```powershell
+```sh
 uv run python scripts/smoke_shopify.py
 ```
 
@@ -126,7 +139,7 @@ uv run python scripts/smoke_shopify.py
 
 The unit suite makes no Shopify or model API calls:
 
-```powershell
+```sh
 uv run python -m unittest discover -s tests -v
 uv run python -m compileall -q src scripts tests
 ```
@@ -135,14 +148,14 @@ uv run python -m compileall -q src scripts tests
 
 Always preview the seed plan first:
 
-```powershell
+```sh
 uv run python scripts/seed_store.py --plan
 ```
 
 > **Warning:** The command below creates real test orders in the connected
 > Shopify store. Use a development store, not a production store.
 
-```powershell
+```sh
 uv run python scripts/seed_store.py
 ```
 
@@ -151,14 +164,14 @@ uv run python scripts/seed_store.py
 Build the local policy index before running policy-question tickets. Re-run
 this command after editing any file in `policies/`:
 
-```powershell
+```sh
 uv run python scripts/index_policies.py
 uv run python scripts/search_policy.py "How long is your warranty?"
 ```
 
 Use a unique ticket ID for each new ticket:
 
-```powershell
+```sh
 uv run python scripts/run_ticket.py TICKET-1001 "Please cancel order #1001."
 uv run python scripts/run_ticket.py TICKET-1002 "Change order #1002 to 20 Lake Road, Dhaka, Dhaka 1205, Bangladesh."
 ```
@@ -169,7 +182,7 @@ ticket. Keep the same ID only when resuming its pending approval.
 If actions pass the policy gate, the graph prints every pending approval and
 its interrupt id. Resume one card at a time from the same or a later process:
 
-```powershell
+```sh
 uv run python scripts/run_ticket.py TICKET-1001 --approve INTERRUPT_ID
 # or
 uv run python scripts/run_ticket.py TICKET-1001 --reject INTERRUPT_ID
@@ -181,7 +194,7 @@ uv run python scripts/run_ticket.py TICKET-1001 --reject INTERRUPT_ID
 
 You can also exercise individual parts of the pipeline:
 
-```powershell
+```sh
 uv run python scripts/classify_ticket.py "Where is my order #1005?"
 uv run python scripts/check_order_policy.py '#1001' cancel_order
 ```
@@ -190,7 +203,7 @@ uv run python scripts/check_order_policy.py '#1001' cancel_order
 
 Install the frontend dependencies once:
 
-```powershell
+```sh
 cd frontend
 npm install
 cd ..
@@ -198,13 +211,13 @@ cd ..
 
 Start FastAPI from the repository root:
 
-```powershell
+```sh
 uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
 ```
 
 In a second PowerShell terminal, start Vite:
 
-```powershell
+```sh
 cd frontend
 npm run dev
 ```
@@ -215,7 +228,7 @@ Open `http://127.0.0.1:5173`.
 
 Build the frontend:
 
-```powershell
+```sh
 cd frontend
 npm run build
 cd ..
@@ -223,7 +236,7 @@ cd ..
 
 Then start FastAPI from the repository root:
 
-```powershell
+```sh
 uv run uvicorn storekeeper.api.app:app --host 127.0.0.1 --port 8000
 ```
 
@@ -240,7 +253,7 @@ and current versus proposed addresses before an operator approves or rejects.
 > the graph and can execute a real cancellation, refund, or address change on
 > the connected Shopify store.
 
-You can also create and list tickets directly through the API:
+You can also create and list tickets directly through the API. PowerShell:
 
 ```powershell
 $ticketBody = @{ticket_text = "How long is your warranty?"} | ConvertTo-Json -Compress
@@ -248,9 +261,20 @@ $ticketBody | curl.exe -s -X POST localhost:8000/api/tickets -H "Content-Type: a
 curl.exe -s localhost:8000/api/tickets
 ```
 
+macOS/Linux:
+
+```sh
+curl -s -X POST localhost:8000/api/tickets -H "Content-Type: application/json" -d '{"ticket_text": "How long is your warranty?"}'
+curl -s localhost:8000/api/tickets
+```
+
 ## Current limitations
 
 - It is currently designed for one operator working with a development store.
+- Tickets are entered manually in the console or CLI. Email and helpdesk
+  integrations (Zendesk, Gorgias) are planned for a future version.
+- Every reply is a draft for the operator. storekeeper never sends messages
+  to customers.
 - The localhost console has no authentication and must not be exposed publicly.
 - Address changes require the complete new street, city, state or province,
   postal code, and country. Incomplete requests escalate to a human.
@@ -268,12 +292,14 @@ curl.exe -s localhost:8000/api/tickets
 
 ```text
 src/storekeeper/
+├── api/            # FastAPI operator API and built-console serving
 ├── graph/          # LangGraph state, nodes, routing, and assembly
 ├── policy/         # Deterministic business rules
 ├── shopify/        # Shopify client, reads, and approved writes
 ├── classify.py     # Structured ticket classification
 ├── domain.py       # Shared business contracts
-└── policy_docs.py  # Policy-document loading and retrieval seam
+├── policy_docs.py  # Policy-document loading and retrieval seam
+└── tickets.py      # Ticket registry and checkpoint-derived status
 
 policies/           # Store policy documents
 scripts/            # CLI workflows and development-store seeding

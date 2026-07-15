@@ -22,7 +22,8 @@ Feature log: what's built, what's next. Details live in
 - [x] 8.3. Approval inbox: safety details, approve/reject, and final results
 - [x] 8. Operator console: FastAPI API wrapping the graph and a Vite + React
       single-page UI with full CLI feature parity and single-process serving
-- [ ] 7b. Polish: README GIF/screenshots of the operator console (after 8)
+- [x] 7b. Polish: README hero screenshot of the operator console
+      (console GIF deferred to a future demo recording)
 - [x] v2. Multi-request tickets: the classifier's ordered task list is the plan;
       code validates it and fans tasks out via `Send` to the
       existing task subgraph (actions) or a research path (questions), and a
@@ -141,4 +142,13 @@ The classifier's task list now fans out through deterministic `Send` routing.
 Independent writes pause together with separate interrupt ids; the API, CLI,
 and approval inbox resume one card at a time. Results return to customer order,
 and one composer drafts the final or holding reply. Same-order write plans are
-rejected before lookup so parallel work cannot race on one order.
+rejected before lookup so parallel work cannot race on one order. Live-verified
+end to end, including an approved parallel write executing on the dev store.
+
+### 7b - README showcase (2026-07-15)
+
+The README now opens in plain language with a hero screenshot: one customer
+message producing two pending approval cards, each showing gate reason and
+exact-match order binding. The diagram gained the escalation path, limitations
+name manual ticket entry and draft-only replies, and quickstart commands now
+run on any platform. The console GIF waits for a future demo recording.
