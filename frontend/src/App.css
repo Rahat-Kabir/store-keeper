@@ -402,7 +402,6 @@ button {
   text-align: left;
   background: transparent;
   border: 0;
-  border-left: 3px solid transparent;
   border-radius: 4px;
   cursor: pointer;
 }
@@ -412,8 +411,14 @@ button {
 }
 
 .history-ticket-row.selected {
-  background: var(--surface);
-  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 2px 8px rgb(30 42 40 / 8%);
+}
+
+.history-ticket-row.selected .history-ticket-preview {
+  font-weight: 600;
 }
 
 .history-ticket-primary {

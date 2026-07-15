@@ -140,14 +140,14 @@ function App() {
           <span className="console-label">Operator console</span>
         </div>
         <div className="header-status">
-          <span className="store-label">Local Shopify store</span>
+          <span className="store-label">Development store</span>
           <span
             className={`approval-summary${
               pendingApprovalCount === 0 ? ' approval-summary-clear' : ''
             }`}
           >
             {pendingApprovalCount === 0
-              ? 'All caught up'
+              ? 'No approvals pending'
               : `${pendingApprovalCount} awaiting approval`}
           </span>
         </div>

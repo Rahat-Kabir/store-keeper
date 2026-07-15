@@ -8,7 +8,7 @@ import {
 import type { TicketDetailResponse, TicketSummary } from '../types'
 import { StatusBadge } from './StatusBadge'
 
-const INITIAL_HISTORY_COUNT = 15
+const HISTORY_PAGE_SIZE = 10
 
 interface TicketListProps {
   tickets: TicketSummary[]
@@ -33,7 +33,7 @@ export function TicketList({
   onSelectTicket,
   onRetry,
 }: TicketListProps) {
-  const [visibleHistoryCount, setVisibleHistoryCount] = useState(INITIAL_HISTORY_COUNT)
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(HISTORY_PAGE_SIZE)
   const pendingTickets = useMemo(
     () => tickets.filter((ticket) => ticket.status === 'pending_approval'),
     [tickets],
@@ -157,9 +157,13 @@ export function TicketList({
             <button
               className="secondary-button load-more-button"
               type="button"
-              onClick={() => setVisibleHistoryCount(historyTickets.length)}
+              onClick={() =>
+                setVisibleHistoryCount((currentCount) =>
+                  Math.min(currentCount + HISTORY_PAGE_SIZE, historyTickets.length),
+                )
+              }
             >
-              Load more ({olderHistoryCount} older)
+              See more ({olderHistoryCount} remaining)
             </button>
           ) : null}
         </>
